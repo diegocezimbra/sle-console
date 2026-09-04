@@ -37,6 +37,7 @@ try {
   pintarFluxo()
   pintarRegua()
   pintarBoard()
+  pintarForaDoBoard(s.sessoes)
 } catch (e) {
   console.error('sle: falha ao montar o estado inicial', e)
 } finally {
@@ -72,6 +73,8 @@ stream.onmessage = async (m) => {
 async function recarregarIndice() {
   indice = await (await fetch(comProjeto('/api/cards'))).json()
   pintarBoard()
+  const s = await (await fetch(comProjeto('/api/snapshot'))).json()
+  pintarForaDoBoard(s.sessoes)
   pintarGit(await (await fetch(comProjeto('/api/git/tree'))).json())
 }
 
@@ -160,6 +163,25 @@ function pintarFluxo() {
     })
   )
   ol.parentElement.scrollTop = ol.parentElement.scrollHeight
+}
+
+/**
+ * O board é o trabalho PLANEJADO. Quase todo trabalho de agente acontece sem
+ * card — e um board com dois cards, sem dizer isso, parece o retrato completo.
+ */
+function pintarForaDoBoard(sessoes) {
+  const semCard = (sessoes ?? []).filter((s) => s.ativa)
+  const aviso = $('fora-do-board')
+  if (!semCard.length) return (aviso.hidden = true)
+
+  const onde = [...new Set(semCard.map((s) => s.projeto ?? s.id.slice(0, 8)))]
+  aviso.hidden = false
+  aviso.replaceChildren(
+    document.createTextNode(`${semCard.length} agente(s) trabalhando agora `),
+    Object.assign(document.createElement('b'), { textContent: 'sem card' }),
+    document.createTextNode(`, em: ${onde.join(', ')}. `),
+    document.createTextNode('O board mostra o trabalho planejado; a execução está em Fluxo e Histórico.')
+  )
 }
 
 function pintarBoard() {
@@ -311,11 +333,6 @@ function avisar(texto, erro = false) {
 
 // ── Controle ──────────────────────────────────────────────────────────────
 async function pintarControle() {
-  if (ehTodos()) {
-    $('agentes').replaceChildren(campoLi('escolha um projeto no seletor para ver os agentes dele'))
-    $('ativos').replaceChildren(campoLi('—'))
-    return
-  }
   const { agentes, ativos, sessoes, gasto } = await (await fetch(comProjeto('/api/agents'))).json()
   $('gasto').textContent = `${(gasto ?? 0).toFixed(2)} USD hoje`
 
@@ -334,13 +351,15 @@ async function pintarControle() {
       div.append(
         campo('nome', a.id),
         campo('det', `${a.role ?? '—'} · ${a.model ?? 'sem modelo'}`),
-        campo('det', a.provider ?? '')
+        campo('det', a.rotuloProjeto ?? a.provider ?? '')
       )
       const b = document.createElement('button')
       b.textContent = 'Rodar'
       b.dataset.rodar = a.id
       b.addEventListener('click', async () => {
-        await fetch(`/api/agents/${encodeURIComponent(a.id)}/run`, { method: 'POST' })
+        // Na visão de todos, rodar exige dizer em qual projeto o agente vive.
+        const onde = a.caminhoProjeto ? `?projeto=${encodeURIComponent(a.caminhoProjeto)}` : ''
+        await fetch(`/api/agents/${encodeURIComponent(a.id)}/run${onde}`, { method: 'POST' })
         pintarControle()
       })
       div.append(b)
@@ -381,6 +400,10 @@ $('parada').addEventListener('click', async () => {
 
 // ── Métricas e grafo ──────────────────────────────────────────────────────
 const NOMES = {
+  atividadePorProjeto: 'atividade por projeto',
+  ferramentasMaisUsadas: 'ferramentas mais usadas',
+  taxaDeFalhaDeComando: 'taxa de falha de comando',
+  picoDeSessoesSimultaneas: 'pico de agentes simultâneos',
   turnosPorCard: 'turnos por card',
   reprovacoesPorGate: 'reprovações por gate',
   gatesQueNuncaReprovam: 'gates que nunca reprovam',
@@ -409,7 +432,9 @@ async function pintarMetricas() {
 }
 
 function formatar(chave, valor) {
-  if (chave === 'taxaDeEscalonamento') return `${(valor * 100).toFixed(0)}%`
+  if (chave === 'taxaDeEscalonamento' || chave === 'taxaDeFalhaDeComando') {
+    return `${(valor * 100).toFixed(0)}%`
+  }
   if (chave === 'tempoDeReviewHumano') return `${Math.round(valor / 60000)} min`
   if (Array.isArray(valor)) return valor.length ? valor.join(', ') : 'nenhum'
   if (valor && typeof valor === 'object') {

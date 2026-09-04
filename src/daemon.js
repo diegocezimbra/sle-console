@@ -23,7 +23,7 @@ import { montarHistorico } from './historico.js'
 import { extrairMedidas } from './otel.js'
 import { COLUNAS, lerCard } from './cards.js'
 import { descobrirProjetos, resolverProjeto } from './projetos.js'
-import { gitDeTodos, indexarTodos, TODOS } from './agregado.js'
+import { agentesDeTodos, gitDeTodos, indexarTodos, TODOS } from './agregado.js'
 
 const WEB = join(dirname(fileURLToPath(import.meta.url)), '..', 'web')
 
@@ -97,12 +97,11 @@ export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoD
       return runner.pararTudo().then((mortos) => json(res, { mortos }))
     }
     if (rota === '/api/agents' && req.method === 'GET') {
-      if (exigeProjeto()) return
       // `ativos` sao processos que o console lancou; `sessoes` sao as que ele
       // observa. Mostrar so os primeiros faz a tela dizer "nenhum agente
       // rodando" enquanto cinco sessoes trabalham.
       return json(res, {
-        agentes: runner.agentes(alvo),
+        agentes: todos ? agentesDeTodos(raiz) : runner.agentes(alvo),
         ativos: runner.ativos(),
         sessoes: estado.snapshot().sessoes.filter((x) => x.ativa),
         gasto: runner.gasto(),

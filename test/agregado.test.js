@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { indexarTodos, gitDeTodos, TODOS } from '../src/agregado.js'
+import { indexarTodos, gitDeTodos, agentesDeTodos, TODOS } from '../src/agregado.js'
 
 function arvore() {
   const raiz = mkdtempSync(join(tmpdir(), 'sle-ag-'))
@@ -67,7 +67,9 @@ test('rota que precisa de um projeto recusa a visao de todos, e nao derruba o da
   const base = `http://127.0.0.1:${d.servidor.address().port}`
 
   // Estas dependem de um projeto: sem ele, 409 explicando -- nunca um crash.
-  for (const rota of ['/api/dir?path=sle', '/api/file?path=x.md', '/api/git/diff?file=a', '/api/agents']) {
+  // `/api/agents` NÃO está aqui: ver todos os agentes de todos os projetos é
+  // exatamente o que a visão de todos serve para fazer.
+  for (const rota of ['/api/dir?path=sle', '/api/file?path=x.md', '/api/git/diff?file=a']) {
     const r = await fetch(`${base}${rota}${rota.includes('?') ? '&' : '?'}projeto=${encodeURIComponent(TODOS)}`)
     assert.equal(r.status, 409, `${rota} devia recusar`)
     const j = await r.json()
@@ -78,7 +80,27 @@ test('rota que precisa de um projeto recusa a visao de todos, e nao derruba o da
   const vivo = await fetch(`${base}/api/projetos`)
   assert.equal(vivo.status, 200)
 
+  const agentes = await fetch(`${base}/api/agents?projeto=${encodeURIComponent(TODOS)}`)
+  assert.equal(agentes.status, 200, 'ver os agentes de todos os projetos precisa funcionar')
+
   d.observador.parar()
   d.servidor.closeAllConnections()
   await new Promise((r) => d.servidor.close(r))
+})
+
+test('na visao de todos, os agentes de todos os projetos aparecem juntos', () => {
+  const raiz = arvore()
+  for (const [nome, modelo] of [['alfa', 'opus'], ['beta', 'deepseek']]) {
+    mkdirSync(join(raiz, nome, 'sle', 'agents'), { recursive: true })
+    writeFileSync(join(raiz, nome, 'sle', 'agents', 'impl.json'),
+      JSON.stringify({ id: 'implementer', role: 'maker', model: modelo, comando: 'echo x' }))
+  }
+  const a = agentesDeTodos([raiz])
+  assert.equal(a.length, 2, 'mesmo id em projetos diferentes conta duas vezes')
+  assert.deepEqual(a.map((x) => x.projeto).sort(), ['alfa', 'beta'])
+  assert.ok(a.every((x) => x.caminhoProjeto), 'cada agente precisa saber de onde rodar')
+})
+
+test('projeto sem agentes nao aparece na lista', () => {
+  assert.deepEqual(agentesDeTodos([arvore()]), [])
 })

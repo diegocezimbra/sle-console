@@ -82,3 +82,53 @@ test('lista vazia nao estoura e devolve todas as metricas em estado explicito', 
     assert.ok('valor' in v && 'estado' in v, `${nome} precisa dizer valor e estado`)
   }
 })
+
+// ── métricas do trabalho real ───────────────────────────────────────────────
+// As do método (gates, cards) dependem do SLE estar em uso. Estas medem o que
+// já está acontecendo: sem elas a tela fica vazia com mil eventos capturados.
+
+const tool = (o) => ev({ kind: 'tool.post', ...o,
+  payload: { tool: o.tool ?? 'Edit', ok: o.ok ?? true, ms: o.ms ?? 100, cwd: o.cwd, ...(o.payload ?? {}) } })
+
+test('atividade por projeto sai do cwd de cada evento', () => {
+  const m = calcularMetricas([
+    tool({ session: 's1', cwd: '/dev/projeto-a' }),
+    tool({ session: 's1', cwd: '/dev/projeto-a' }),
+    tool({ session: 's2', cwd: '/dev/projeto-b' }),
+  ])
+  assert.equal(m.atividadePorProjeto.valor['projeto-a'], 2)
+  assert.equal(m.atividadePorProjeto.valor['projeto-b'], 1)
+})
+
+test('as ferramentas mais usadas dizem o que os agentes de fato fazem', () => {
+  const m = calcularMetricas([
+    tool({ session: 's1', tool: 'Bash' }), tool({ session: 's1', tool: 'Bash' }),
+    tool({ session: 's1', tool: 'Edit' }),
+  ])
+  assert.equal(m.ferramentasMaisUsadas.valor.Bash, 2)
+  assert.equal(m.ferramentasMaisUsadas.valor.Edit, 1)
+})
+
+test('taxa de falha de comando: a fracao que voltou errada', () => {
+  const m = calcularMetricas([
+    tool({ session: 's1', ok: false }), tool({ session: 's1', ok: true }),
+    tool({ session: 's1', ok: true }), tool({ session: 's1', ok: true }),
+  ])
+  assert.equal(m.taxaDeFalhaDeComando.valor, 0.25)
+})
+
+test('pico de sessoes simultaneas: quantos agentes trabalharam junto', () => {
+  const m = calcularMetricas([
+    tool({ session: 'a', ts: '2026-09-04T10:00:00.000Z' }),
+    tool({ session: 'b', ts: '2026-09-04T10:01:00.000Z' }),
+    tool({ session: 'c', ts: '2026-09-04T10:02:00.000Z' }),
+    tool({ session: 'a', ts: '2026-09-04T18:00:00.000Z' }),
+  ])
+  assert.equal(m.picoDeSessoesSimultaneas.valor, 3, 'tres sessoes na mesma janela')
+})
+
+test('sem eventos, as metricas de atividade tambem dizem o motivo', () => {
+  const m = calcularMetricas([])
+  assert.equal(m.atividadePorProjeto.valor, null)
+  assert.match(m.atividadePorProjeto.estado, /nenhum/i)
+})

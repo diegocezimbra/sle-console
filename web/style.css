@@ -135,3 +135,8 @@ padding:4px 10px;font:inherit;font-size:11px;cursor:pointer}
 border-radius:4px;padding:3px 8px;font:inherit;font-size:12px;max-width:280px}
 #projeto:hover{border-color:var(--l1)}
 #projeto:empty{display:none}
+
+#tela-board{display:flex;flex-direction:column;gap:10px}
+#fora-do-board{margin:0;padding:8px 10px;border:1px dashed var(--l2);border-radius:4px;
+color:var(--l2);font-size:11px;line-height:1.6}
+#fora-do-board b{color:var(--texto);font-weight:normal}

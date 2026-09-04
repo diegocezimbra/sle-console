@@ -70,3 +70,17 @@ test('clicar num card abre a spec dele', { skip: pular }, async () => {
 test('a tela nao registra erro de JavaScript em nenhuma aba', { skip: pular }, async () => {
   assert.deepEqual(browser.erros, [], browser.erros.join(' | '))
 })
+
+/// O board mostra o trabalho PLANEJADO. Quando há agentes trabalhando sem card,
+/// a tela precisa dizer isso -- senão um board com dois cards parece o retrato
+/// completo enquanto mil eventos acontecem fora dele.
+test('o board avisa quando ha trabalho acontecendo fora dele', { skip: pular }, async () => {
+  await fetch(`${base}/api/hook`, { method: 'POST', body: JSON.stringify({
+    session_id: 'sem-card-1', cwd: '/dev/projeto-x', hook_event_name: 'PostToolUse',
+    tool_name: 'Edit', tool_input: { file_path: 'a.ts' }, tool_response: { success: true } }) })
+
+  await browser.avaliar(`document.querySelector('nav button[data-tela="board"]').click()`)
+  await browser.esperar(`document.getElementById('fora-do-board').textContent.includes('sem card')`)
+  const t = await browser.avaliar(`document.getElementById('fora-do-board').textContent`)
+  assert.match(t, /projeto-x/, 'precisa dizer ONDE o trabalho está acontecendo')
+})

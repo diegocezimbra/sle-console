@@ -14,7 +14,18 @@ export function calcularMetricas(eventos) {
   const decisoes = eventos.filter((e) => e.kind === 'gate.decidido')
   const custos = eventos.filter((e) => e.kind === 'custo')
 
+  const ferramentas = eventos.filter((e) => e.kind === 'tool.post')
+
   return {
+    // ── o trabalho que está acontecendo ──────────────────────────────────
+    // As métricas do método dependem do SLE estar em uso; estas medem o que
+    // já está sendo capturado, para a tela não ficar vazia com mil eventos.
+    atividadePorProjeto: atividadePorProjeto(ferramentas),
+    ferramentasMaisUsadas: contarPor(ferramentas, (e) => e.payload?.tool),
+    taxaDeFalhaDeComando: taxaDeFalha(ferramentas),
+    picoDeSessoesSimultaneas: picoDeSessoes(eventos),
+
+    // ── o método ─────────────────────────────────────────────────────────
     turnosPorCard: turnosPorCard(eventos),
     reprovacoesPorGate: reprovacoesPorGate(decisoes),
     gatesQueNuncaReprovam: gatesQueNuncaReprovam(decisoes),
@@ -26,6 +37,58 @@ export function calcularMetricas(eventos) {
     coberturaDeMutacao: sem('vem da suíte de mutação, fora do console'),
     changeFailureRate: sem('depende de incidentes em produção, fora do console'),
   }
+}
+
+function atividadePorProjeto(eventos) {
+  const porProjeto = {}
+  for (const e of eventos) {
+    const cwd = e.payload?.cwd
+    if (!cwd) continue
+    const nome = String(cwd).split(/[/\\]/).filter(Boolean).pop()
+    porProjeto[nome] = (porProjeto[nome] ?? 0) + 1
+  }
+  return Object.keys(porProjeto).length ? com(ordenar(porProjeto)) : sem('nenhum evento com projeto ainda')
+}
+
+function contarPor(eventos, chave) {
+  const contagem = {}
+  for (const e of eventos) {
+    const k = chave(e)
+    if (!k) continue
+    contagem[k] = (contagem[k] ?? 0) + 1
+  }
+  return Object.keys(contagem).length ? com(ordenar(contagem)) : sem('nenhuma ferramenta usada ainda')
+}
+
+function taxaDeFalha(eventos) {
+  const comResultado = eventos.filter((e) => e.payload?.ok != null)
+  if (!comResultado.length) return sem('nenhum comando com resultado ainda')
+  const falhas = comResultado.filter((e) => e.payload.ok === false).length
+  return com(falhas / comResultado.length)
+}
+
+/** Quantos agentes trabalharam ao mesmo tempo, em janelas de 10 minutos. */
+function picoDeSessoes(eventos) {
+  if (!eventos.length) return sem('nenhum evento ainda')
+  const janelas = new Map()
+  for (const e of eventos) {
+    if (!e.session) continue
+    const janela = Math.floor(Date.parse(e.ts) / 600000)
+    const set = janelas.get(janela) ?? new Set()
+    set.add(e.session)
+    janelas.set(janela, set)
+  }
+  if (!janelas.size) return sem('nenhuma sessão ainda')
+  return com(Math.max(...[...janelas.values()].map((s) => s.size)))
+}
+
+/** Maior primeiro: a tela mostra os dez de cima. */
+function ordenar(objeto) {
+  return Object.fromEntries(
+    Object.entries(objeto)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+  )
 }
 
 function turnosPorCard(eventos) {
