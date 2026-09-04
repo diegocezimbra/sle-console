@@ -4,7 +4,14 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { indexarTodos, gitDeTodos, agentesDeTodos, TODOS } from '../src/agregado.js'
+import {
+  indexarTodos,
+  gitDeTodos,
+  gitDeTodosAsync,
+  invalidarCacheGit,
+  agentesDeTodos,
+  TODOS,
+} from '../src/agregado.js'
 
 function arvore() {
   const raiz = mkdtempSync(join(tmpdir(), 'sle-ag-'))
@@ -103,4 +110,36 @@ test('na visao de todos, os agentes de todos os projetos aparecem juntos', () =>
 
 test('projeto sem agentes nao aparece na lista', () => {
   assert.deepEqual(agentesDeTodos([arvore()]), [])
+})
+
+// ── desempenho ─────────────────────────────────────────────────────────────
+// Medido em 2026-09-04: `git status` em 68 repositórios, em série, levava
+// 11,5s. Com o SSE pedindo snapshot a cada evento, a fila crescia até a tela
+// não abrir (65s por requisição).
+
+test('o git de todos vem em paralelo e cabe num piscar de olhos', async () => {
+  const raiz = arvore()
+  const t0 = Date.now()
+  const g = await gitDeTodosAsync([raiz])
+  const gasto = Date.now() - t0
+  assert.equal(g.repos, 2)
+  assert.equal(g.sujos, 1)
+  assert.ok(gasto < 5000, `levou ${gasto}ms`)
+})
+
+test('a segunda chamada sai do cache', async () => {
+  const raiz = arvore()
+  await gitDeTodosAsync([raiz])
+  writeFileSync(join(raiz, 'alfa', 'novo-arquivo.txt'), 'x')
+  const g = await gitDeTodosAsync([raiz])
+  assert.equal(g.sujos, 1, 'o cache ainda vale; sem ele seriam 2')
+})
+
+test('invalidar faz a proxima chamada olhar os repositorios de novo', async () => {
+  const raiz = arvore()
+  await gitDeTodosAsync([raiz])
+  writeFileSync(join(raiz, 'alfa', 'outro.txt'), 'x')
+  invalidarCacheGit()
+  const g = await gitDeTodosAsync([raiz])
+  assert.equal(g.sujos, 2)
 })

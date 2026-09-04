@@ -3,9 +3,10 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { descobrirProjetos, resolverProjeto } from '../src/projetos.js'
+import { descobrirProjetos, resolverProjeto, invalidarCache } from '../src/projetos.js'
 
 function arvore() {
+  invalidarCache()
   const raiz = mkdtempSync(join(tmpdir(), 'sle-pr-'))
   const repo = (caminho) => {
     mkdirSync(join(raiz, caminho, '.git'), { recursive: true })
@@ -101,4 +102,29 @@ test('sem pedido, resolve para o primeiro projeto', () => {
 test('raiz sem nenhum repositorio devolve a propria raiz', () => {
   const vazia = mkdtempSync(join(tmpdir(), 'sle-vz-'))
   assert.equal(resolverProjeto(vazia, null), vazia)
+})
+
+// ── desempenho ─────────────────────────────────────────────────────────────
+// Medido em 2026-09-04: varrer 76 projetos levava 65s, e cada requisição
+// varria de novo. Com o SSE chamando a cada evento, a tela não abria.
+
+test('a segunda varredura sai do cache, e nao do disco', () => {
+  const raiz = arvore()
+  assert.equal(descobrirProjetos(raiz).length, 3)
+
+  // Prova de cache sem medir relógio: o disco muda e a segunda chamada não vê.
+  // Relógio em teste é ruído — mede a carga da máquina, não o código.
+  mkdirSync(join(raiz, 'cliente-c', 'depois', '.git'), { recursive: true })
+  assert.equal(descobrirProjetos(raiz).length, 3, 'a segunda chamada não foi ao disco')
+})
+
+test('invalidar o cache faz a proxima varredura ver o disco de novo', () => {
+  const raiz = arvore()
+  assert.equal(descobrirProjetos(raiz).length, 3)
+
+  mkdirSync(join(raiz, 'cliente-c', 'novo', '.git'), { recursive: true })
+  assert.equal(descobrirProjetos(raiz).length, 3, 'sem invalidar, o cache ainda vale')
+
+  invalidarCache()
+  assert.equal(descobrirProjetos(raiz).length, 4, 'depois de invalidar, o disco manda')
 })

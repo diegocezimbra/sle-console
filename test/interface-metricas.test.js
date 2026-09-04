@@ -71,6 +71,25 @@ test('mover um card pela tela muda a coluna e o disco', { skip: pular }, async (
   assert.equal(existsSync(join(projeto, 'cards/doing/CARD-1.md')), false)
 })
 
+/// O canvas num flex-column estica se ninguém der altura a ele -- e empurra
+/// todas as métricas para fora da tela. Pixel pintado não pega isso.
+test('o grafo tem altura fixa e nao engole a tela', { skip: pular }, async () => {
+  await browser.avaliar(`document.querySelector('nav button[data-tela="metricas"]').click()`)
+  await browser.esperar(`document.getElementById('grafo').offsetParent !== null`)
+  const altura = await browser.avaliar(`document.getElementById('grafo').getBoundingClientRect().height`)
+  assert.ok(altura > 100 && altura < 320, `o grafo ficou com ${altura}px de altura`)
+})
+
+test('as metricas ficam visiveis na tela, e nao empurradas para baixo', { skip: pular }, async () => {
+  const visivel = await browser.avaliar(`(() => {
+    const m = document.querySelector('#metricas .metrica')
+    if (!m) return false
+    const r = m.getBoundingClientRect()
+    return r.top < window.innerHeight && r.height > 0
+  })()`)
+  assert.equal(visivel, true, 'a primeira métrica precisa caber na tela sem rolar')
+})
+
 test('nenhum erro de JavaScript nas telas novas', { skip: pular }, async () => {
   assert.deepEqual(browser.erros, [], browser.erros.join(' | '))
 })

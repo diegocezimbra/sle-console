@@ -101,7 +101,11 @@ border:1px solid var(--borda);border-radius:999px}
 #ativos .observado .origem{color:var(--l1);border-color:var(--l1)}
 
 #tela-metricas{display:flex;flex-direction:column;gap:10px}
-#grafo{border:1px solid var(--borda);border-radius:4px;background:var(--fundo)}
+/* Altura fixa: num flex-column o canvas sem altura estica e empurra as
+   métricas para fora da tela. O atributo height do HTML não segura o CSS. */
+#grafo{border:1px solid var(--borda);border-radius:4px;background:var(--fundo);
+height:200px;flex:0 0 auto;width:100%}
+#tela-metricas #metricas{flex:1 1 auto;align-content:start}
 #metricas{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px}
 .metrica{background:var(--fundo);border:1px solid var(--borda);border-radius:4px;padding:10px}
 .metrica .nome{display:block;color:var(--fraco);font-size:11px;text-transform:uppercase;

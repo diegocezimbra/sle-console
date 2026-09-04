@@ -22,8 +22,14 @@ import { calcularMetricas } from './metricas.js'
 import { montarHistorico } from './historico.js'
 import { extrairMedidas } from './otel.js'
 import { COLUNAS, lerCard } from './cards.js'
-import { descobrirProjetos, resolverProjeto } from './projetos.js'
-import { agentesDeTodos, gitDeTodos, indexarTodos, TODOS } from './agregado.js'
+import { descobrirProjetos, invalidarCache, resolverProjeto } from './projetos.js'
+import {
+  agentesDeTodos,
+  gitDeTodosAsync,
+  indexarTodos,
+  invalidarCacheGit,
+  TODOS,
+} from './agregado.js'
 
 const WEB = join(dirname(fileURLToPath(import.meta.url)), '..', 'web')
 
@@ -45,7 +51,11 @@ export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoD
 
   // O disco e a verdade: quando ele muda, a tela sabe. Sem polling.
   const observador = observarArvore(projeto)
-  observador.aoMudar((mudanca) =>
+  observador.aoMudar((mudanca) => {
+    // Disco mudou: a próxima varredura precisa ver o que mudou.
+    invalidarCache()
+    invalidarCacheGit()
+    return
     transmitir({
       ts: new Date().toISOString(),
       kind: 'arquivo.mudou',
@@ -56,7 +66,7 @@ export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoD
       parent_agent: null,
       payload: mudanca,
     })
-  )
+  })
 
   const servidor = createServer((req, res) => {
     const rota = req.url?.split('?')[0] ?? '/'
@@ -75,7 +85,7 @@ export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoD
       res.end(JSON.stringify({ erro: 'escolha um projeto no seletor para esta ação' }))
       return true
     }
-    const git = () => (todos ? gitDeTodos(raiz) : estadoDoGit(alvo))
+    const git = async () => (todos ? gitDeTodosAsync(raiz) : estadoDoGit(alvo))
 
     if (rota === '/api/projetos') {
       return json(res, {
@@ -176,13 +186,15 @@ export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoD
     }
     if (rota === '/api/snapshot') {
       const i = indice()
-      return json(res, {
-        ...estado.snapshot(),
-        cards: i.cards,
-        board: i.board,
-        divergencias: i.divergencias,
-        git: git(),
-      })
+      return git().then((g) =>
+        json(res, {
+          ...estado.snapshot(),
+          cards: i.cards,
+          board: i.board,
+          divergencias: i.divergencias,
+          git: g,
+        })
+      )
     }
     if (rota === '/api/cards') return json(res, indice())
     if (rota.startsWith('/api/cards/')) {
@@ -190,7 +202,7 @@ export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoD
       const achado = indice().cards.find((c) => c.id === id)
       return achado ? json(res, achado) : fim(res, 404)
     }
-    if (rota === '/api/git/tree') return json(res, git())
+    if (rota === '/api/git/tree') return git().then((g) => json(res, g))
     if (rota === '/api/git/log') return exigeProjeto() ? undefined : json(res, historico(alvo))
     if (rota === '/api/git/diff') {
       if (exigeProjeto()) return

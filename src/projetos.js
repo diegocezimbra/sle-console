@@ -10,11 +10,28 @@ import { join, relative, resolve, sep } from 'node:path'
 const IGNORAR = new Set(['node_modules', '.git', 'target', 'dist', 'build', '.next', 'vendor'])
 
 /**
+ * Cache da varredura.
+ *
+ * Medido em 2026-09-04: varrer 76 projetos levava 65 segundos, e cada rota
+ * varria de novo -- com o SSE pedindo snapshot a cada evento, a tela não abria.
+ * O watcher invalida quando o disco muda; o TTL cobre o que ele não vê.
+ */
+const cache = new Map()
+const TTL_MS = 30000
+
+export function invalidarCache() {
+  cache.clear()
+}
+
+/**
  * Repositorios git ate `profundidade` niveis abaixo de cada raiz.
  * Aceita uma raiz ou varias -- clientes costumam morar em pastas diferentes.
  */
 export function descobrirProjetos(raizes, profundidade = 3) {
   const lista = Array.isArray(raizes) ? raizes : [raizes]
+  const chave = `${lista.join('|')}#${profundidade}`
+  const guardado = cache.get(chave)
+  if (guardado && Date.now() - guardado.em < TTL_MS) return guardado.valor
   const achados = []
   const vistos = new Set()
   for (const raiz of lista) {
@@ -26,7 +43,9 @@ export function descobrirProjetos(raizes, profundidade = 3) {
       achados.push(p)
     }
   }
-  return achados.sort((a, b) => a.rotulo.localeCompare(b.rotulo))
+  const ordenado = achados.sort((a, b) => a.rotulo.localeCompare(b.rotulo))
+  cache.set(chave, { em: Date.now(), valor: ordenado })
+  return ordenado
 }
 
 function varrer(raiz, dir, resta, achados) {
