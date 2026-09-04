@@ -4,8 +4,9 @@ Observa, em tempo real, o Sistema de Loops de Engenharia rodando na sua máquina
 quais agentes estão vivos, o que cada um está fazendo agora, e em que escala de
 tempo cada coisa acontece.
 
-**Fase 1 — Ver.** Só observação: não existe um único endpoint que escreva no seu
-repositório.
+Quatro telas: **Fluxo** (o que está acontecendo agora), **Board** (os cards),
+**Editar** (gates, prompts, agentes) e **Controle** (rodar agentes, parada de
+emergência).
 
 ```bash
 git clone https://github.com/diegocezimbra/sle-console && cd sle-console
@@ -25,13 +26,36 @@ Para alimentar, aponte os hooks do Claude Code para o daemon:
 Todo hook de ingestão sai com 0, sempre. **Observabilidade nunca bloqueia
 execução** — um hook que morre não pode derrubar sua sessão de trabalho.
 
-## O que a tela mostra
+## As telas
 
-| painel | responde |
+| tela | responde |
 |---|---|
-| **Agentes** | quem está vivo, quantos eventos, encerrado ou não |
-| **Régua de loops** | um traço por evento, uma faixa por escala de tempo: L1 turno (segundos), L2 etapa e sessão (minutos), L3 card (horas) |
-| **Fluxo ao vivo** | o que está sendo executado agora, com duração; falha em vermelho |
+| **Fluxo** | quem está vivo · a régua de loops (um traço por evento, uma faixa por escala de tempo: L1 turno, L2 etapa, L3 card) · o que está executando agora, com duração, falha em vermelho |
+| **Board** | os cards por coluna do pipeline, risco visível sem abrir; clicar abre a spec |
+| **Editar** | gates, prompts, agentes e cards, com validação antes de gravar e um **Testar agora** que roda o comando de verificação de verdade |
+| **Controle** | cada agente com papel e modelo, botão de rodar, quem está rodando, teto de gasto e **parada de emergência** |
+
+## O que o daemon recusa fazer
+
+Estas não são configurações, são limites do desenho:
+
+- **escrita só em `cards/`, `sle/` e `docs/`** — `..`, caminho absoluto,
+  `.git/` e symlink apontando para fora são recusados **antes** de tocar o
+  disco, e o symlink é resolvido de verdade, não conferido pela string;
+- **conteúdo inválido não chega ao disco** — JSON quebrado, gate com modo
+  inexistente ou agente que executa etapa *e* aprova gate voltam 422 com o
+  motivo, e o arquivo bom continua lá;
+- **o comando de um agente vem da configuração, nunca da requisição** — a API
+  aceita o *id* de um agente e nada mais. Um endpoint que aceitasse comando
+  seria execução remota de código com nome bonito;
+- **gate que o daemon não sabe avaliar para o pipeline** em vez de liberar —
+  falha fechada, nunca aberta;
+- **a condição de um `auto_unless` não é avaliada como expressão.** Só o
+  formato `card.<campo> == '<valor>'` é reconhecido; o resto é ignorado, porque
+  avaliar texto de um arquivo editável pela UI é executar código de terceiros
+  dentro do daemon;
+- **a parada de emergência mata o grupo de processos**, não só o filho direto —
+  parada que deixa neto vivo não é parada.
 
 ## Arquitetura
 
@@ -49,22 +73,21 @@ O disco é a verdade; a memória é um índice descartável sobre ele.
 ## Testes
 
 ```bash
-npm test     # node:test, embutido — 23 testes, zero dependência
+npm test     # node:test embutido — zero dependência, inclusive nos testes
 ```
 
-Cobrem a normalização de payload, o estado (append-only, remontagem após
-reinício, linha corrompida) e o daemon por HTTP real (ingestão, SSE, snapshot,
-404 em rota desconhecida).
+Cobrem ingestão, estado (append-only, remontagem após reinício, linha
+corrompida), cards e frontmatter, git, watcher, contenção de escrita,
+validação, motor de gates, runner — e **a interface num Chrome de verdade**.
 
-**A interface não tem teste automatizado** — testá-la exigiria um browser, e
-browser é dependência. A verificação é visual, e ela já pegou um defeito que
-nenhum teste de servidor pegaria: um `const` usado antes da declaração quebrava
-o primeiro paint inteiro sem qualquer sinal no servidor.
+Os testes de interface falam CDP pelo `WebSocket` nativo do Node
+(`test/apoio/browser.js`, ~140 linhas), então rodam num browser real sem
+`devDependencies`. Sem Chrome na máquina, eles se declaram pulados em vez de
+falhar.
 
-## Fases seguintes
-
-2 — Ler (cards, board, git) · 3 — Editar (gates, prompts, agentes) ·
-4 — Controlar (runner, modelos por agente, parada de emergência).
+Vale por dois defeitos que só eles pegam: um `const` usado antes da declaração,
+que quebrava o primeiro paint inteiro sem um único sinal no servidor; e um 404
+de favicon em todo carregamento. O servidor respondia 200 nos dois casos.
 
 A especificação completa das quatro fases não faz parte deste repositório —
 ela é o documento de método de onde este daemon saiu.

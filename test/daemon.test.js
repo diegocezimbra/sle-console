@@ -13,6 +13,8 @@ async function subir() {
   // e a suite trava em vez de falhar.
   const fechar = () =>
     new Promise((r) => {
+      // O watcher segura o processo vivo: sem parar, a suite nunca termina.
+      d.observador.parar()
       d.servidor.closeAllConnections()
       d.servidor.close(r)
     })

@@ -8,11 +8,36 @@ h1{font-size:14px;margin:0;letter-spacing:.08em;text-transform:uppercase}
 h2{font-size:11px;margin:0 0 8px;color:var(--fraco);letter-spacing:.1em;text-transform:uppercase}
 .pill{font-size:11px;padding:2px 8px;border:1px solid var(--borda);border-radius:999px;color:var(--fraco)}
 .pill.vivo{color:var(--ok);border-color:var(--ok)}
-main{display:grid;grid-template-columns:260px 1fr;grid-template-rows:auto 1fr;gap:12px;padding:12px;
-height:calc(100vh - 49px)}
-section{background:var(--painel);border:1px solid var(--borda);border-radius:6px;padding:12px;min-height:0}
+main{padding:12px;height:calc(100vh - 49px)}
+#tela-fluxo{display:grid;grid-template-columns:260px 1fr;grid-template-rows:auto 1fr;gap:12px;height:100%}
+#tela-fluxo>div,#tela-board,#tela-card{background:var(--painel);border:1px solid var(--borda);
+border-radius:6px;padding:12px;min-height:0}
+#tela-board,#tela-card{height:100%;overflow:auto}
 #sessoes-painel{grid-row:1/3}
 #fluxo-painel{overflow:auto}
+nav{display:flex;gap:4px}
+nav button{background:none;border:1px solid transparent;color:var(--fraco);font:inherit;
+padding:3px 10px;border-radius:4px;cursor:pointer}
+nav button:hover{color:var(--texto)}
+nav button.ativa{color:var(--texto);border-color:var(--borda);background:var(--painel)}
+.cresce{flex:1}
+#colunas{display:grid;grid-template-columns:repeat(7,minmax(150px,1fr));gap:8px;height:100%}
+.coluna{display:flex;flex-direction:column;min-height:0}
+.coluna>h3{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--fraco);
+margin:0 0 6px;display:flex;justify-content:space-between}
+.coluna>div{overflow:auto;display:flex;flex-direction:column;gap:6px}
+.card{background:var(--fundo);border:1px solid var(--borda);border-left-width:3px;border-radius:4px;
+padding:8px;cursor:pointer;text-align:left;color:inherit;font:inherit;width:100%}
+.card:hover{border-color:var(--l1)}
+.card .cid{color:var(--fraco);font-size:11px}
+.card.risco-alto{border-left-color:var(--erro)}
+.card.risco-medio{border-left-color:var(--l2)}
+.card.risco-baixo{border-left-color:var(--ok)}
+#card-conteudo h3{margin:0 0 4px;font-size:15px}
+#card-conteudo .meta{display:flex;gap:14px;color:var(--fraco);font-size:11px;margin-bottom:14px;
+flex-wrap:wrap}
+#card-conteudo pre{white-space:pre-wrap;background:var(--fundo);border:1px solid var(--borda);
+border-radius:4px;padding:12px;margin:0;max-width:78ch}
 ul,ol{margin:0;padding:0;list-style:none}
 #sessoes li{padding:6px 0;border-bottom:1px solid var(--borda)}
 #sessoes .id{color:var(--texto)}
@@ -29,3 +54,37 @@ border-bottom:1px solid #1d212a}
 canvas{width:100%;display:block}
 .legenda{display:flex;gap:12px;font-size:11px;color:var(--fraco);margin:6px 0 0}
 .legenda .l1{color:var(--l1)}.legenda .l2{color:var(--l2)}.legenda .l3{color:var(--l3)}
+
+#tela-editar{display:grid;grid-template-columns:230px 1fr;gap:12px}
+#tela-editar aside{overflow:auto;border-right:1px solid var(--borda);padding-right:10px}
+#arquivos li{margin-bottom:2px}
+#arquivos button{background:none;border:0;color:var(--fraco);font:inherit;cursor:pointer;
+padding:3px 6px;border-radius:4px;width:100%;text-align:left}
+#arquivos button:hover,#arquivos button.aberto{background:var(--fundo);color:var(--texto)}
+#editor-painel{display:grid;grid-template-rows:auto 1fr auto auto;gap:8px;min-height:0}
+.barra{display:flex;gap:8px;align-items:center}
+#editor{background:var(--fundo);color:var(--texto);border:1px solid var(--borda);border-radius:4px;
+padding:10px;font:inherit;resize:none;min-height:0}
+#comando{flex:1;background:var(--fundo);color:var(--texto);border:1px solid var(--borda);
+border-radius:4px;padding:6px 8px;font:inherit}
+#salvar,#testar{background:var(--painel);color:var(--texto);border:1px solid var(--borda);
+border-radius:4px;padding:5px 12px;font:inherit;cursor:pointer}
+#salvar:hover,#testar:hover{border-color:var(--l1)}
+#aviso{font-size:11px;color:var(--ok)}
+#aviso.erro{color:var(--erro)}
+#saida{background:var(--fundo);border:1px solid var(--borda);border-radius:4px;padding:8px;
+margin:0;max-height:170px;overflow:auto;white-space:pre-wrap;color:var(--fraco);font-size:11px}
+
+#tela-controle{display:flex;flex-direction:column;gap:10px}
+#agentes{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px}
+.agente{background:var(--fundo);border:1px solid var(--borda);border-radius:4px;padding:10px}
+.agente.alerta{border-color:var(--l2)}
+.agente .nome{display:block;margin-bottom:2px}
+.agente .det{color:var(--fraco);font-size:11px;display:block}
+.agente button{margin-top:8px;background:var(--painel);color:var(--texto);border:1px solid var(--borda);
+border-radius:4px;padding:3px 10px;font:inherit;cursor:pointer}
+.agente button:hover{border-color:var(--l1)}
+.perigo{background:transparent;color:var(--erro);border:1px solid var(--erro);border-radius:4px;
+padding:5px 12px;font:inherit;cursor:pointer}
+.perigo:hover{background:var(--erro);color:#fff}
+#ativos li.processo{padding:5px 0;border-bottom:1px solid var(--borda);color:var(--fraco)}

@@ -1,32 +1,82 @@
 <!doctype html>
 <meta charset="utf-8" />
 <title>SLE Console</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%230f1115'/%3E%3Crect x='3' y='4' width='2' height='8' fill='%234aa3df'/%3E%3Crect x='7' y='6' width='2' height='6' fill='%23c08b3e'/%3E%3Crect x='11' y='3' width='2' height='9' fill='%237b5ec7'/%3E%3C/svg%3E" />
 <link rel="stylesheet" href="/style.css" />
+
 <header>
   <h1>SLE Console</h1>
+  <nav>
+    <button data-tela="fluxo" class="ativa">Fluxo</button>
+    <button data-tela="board">Board</button>
+    <button data-tela="editar">Editar</button>
+    <button data-tela="controle">Controle</button>
+    <button data-tela="card" hidden>Card</button>
+  </nav>
+  <span class="cresce"></span>
+  <span id="git" class="pill">—</span>
   <span id="conexao" class="pill">conectando…</span>
   <span class="pill" id="contadores">—</span>
 </header>
 
 <main>
-  <section id="sessoes-painel">
-    <h2>Agentes</h2>
-    <ul id="sessoes"><li class="vazio">nenhuma sessão ainda</li></ul>
+  <section id="tela-fluxo">
+    <div id="sessoes-painel">
+      <h2>Agentes</h2>
+      <ul id="sessoes"><li class="vazio">nenhuma sessão ainda</li></ul>
+    </div>
+    <div id="regua-painel">
+      <h2>Régua de loops</h2>
+      <canvas id="regua" height="120"></canvas>
+      <p class="legenda">
+        <span class="l1">L1 turno</span><span class="l2">L2 etapa</span><span class="l3">L3 card</span>
+      </p>
+    </div>
+    <div id="fluxo-painel">
+      <h2>Fluxo ao vivo</h2>
+      <ol id="fluxo"><li class="vazio">esperando o primeiro evento</li></ol>
+    </div>
   </section>
 
-  <section id="regua-painel">
-    <h2>Régua de loops</h2>
-    <canvas id="regua" height="120"></canvas>
-    <p class="legenda">
-      <span class="l1">L1 turno</span>
-      <span class="l2">L2 etapa</span>
-      <span class="l3">L3 card</span>
-    </p>
+  <section id="tela-board" hidden>
+    <div id="colunas"></div>
   </section>
 
-  <section id="fluxo-painel">
-    <h2>Fluxo ao vivo</h2>
-    <ol id="fluxo"><li class="vazio">esperando o primeiro evento</li></ol>
+  <section id="tela-editar" hidden>
+    <aside>
+      <h2>Arquivos</h2>
+      <ul id="arquivos"></ul>
+    </aside>
+    <div id="editor-painel">
+      <div class="barra">
+        <span id="abertoem" class="pill">nenhum arquivo aberto</span>
+        <span class="cresce"></span>
+        <span id="aviso"></span>
+        <button id="salvar">Salvar</button>
+      </div>
+      <textarea id="editor" spellcheck="false" placeholder="escolha um arquivo à esquerda"></textarea>
+      <div class="barra">
+        <input id="comando" placeholder="comando de verificação do gate" />
+        <button id="testar">Testar agora</button>
+      </div>
+      <pre id="saida"></pre>
+    </div>
+  </section>
+
+  <section id="tela-controle" hidden>
+    <div class="barra">
+      <h2>Agentes</h2>
+      <span class="cresce"></span>
+      <span id="gasto" class="pill">—</span>
+      <button id="parada" class="perigo">Parada de emergência</button>
+    </div>
+    <div id="agentes"></div>
+    <h2>Rodando agora</h2>
+    <ul id="ativos"><li class="vazio">nenhum agente rodando</li></ul>
+  </section>
+
+  <section id="tela-card" hidden>
+    <article id="card-conteudo"></article>
   </section>
 </main>
 <script type="module" src="/app.js"></script>
