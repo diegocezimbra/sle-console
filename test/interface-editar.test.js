@@ -32,7 +32,7 @@ after(async () => { await browser?.fechar(); await fechar?.() })
 
 const irParaEditar = async () => {
   await browser.avaliar(`document.querySelector('nav button[data-tela="editar"]').click()`)
-  await browser.esperar(`document.getElementById('tela-editar').hidden === false`)
+  await browser.esperar(`document.getElementById('tela-editar').offsetParent !== null`)
 }
 
 test('a aba de edicao lista os arquivos editaveis', { skip: pular }, async () => {

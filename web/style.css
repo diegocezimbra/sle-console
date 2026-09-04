@@ -1,6 +1,9 @@
 :root{--fundo:#0f1115;--painel:#171a21;--borda:#252a34;--texto:#d7dae0;--fraco:#8b93a1;
 --l1:#4aa3df;--l2:#c08b3e;--l3:#7b5ec7;--ok:#4f9d69;--erro:#c25450}
 *{box-sizing:border-box}
+/* Uma regra de display com seletor de id vence o `hidden` do browser -- sem
+   isto a tela "escondida" continua na tela, e a propriedade .hidden mente. */
+[hidden]{display:none!important}
 body{margin:0;background:var(--fundo);color:var(--texto);
 font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 header{display:flex;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--borda)}
@@ -24,12 +27,14 @@ nav button.ativa{color:var(--texto);border-color:var(--borda);background:var(--p
 #colunas{display:grid;grid-template-columns:repeat(7,minmax(150px,1fr));gap:8px;height:100%}
 .coluna{display:flex;flex-direction:column;min-height:0}
 .coluna>h3{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--fraco);
-margin:0 0 6px;display:flex;justify-content:space-between}
+margin:0 0 6px;display:flex;justify-content:space-between;gap:6px;padding-bottom:4px;
+border-bottom:1px solid var(--borda)}
 .coluna>div{overflow:auto;display:flex;flex-direction:column;gap:6px}
 .card{background:var(--fundo);border:1px solid var(--borda);border-left-width:3px;border-radius:4px;
 padding:8px;cursor:pointer;text-align:left;color:inherit;font:inherit;width:100%}
 .card:hover{border-color:var(--l1)}
-.card .cid{color:var(--fraco);font-size:11px}
+.card .cid{color:var(--fraco);font-size:11px;display:block;margin-bottom:3px}
+.card .titulo{display:block;line-height:1.35}
 .card.risco-alto{border-left-color:var(--erro)}
 .card.risco-medio{border-left-color:var(--l2)}
 .card.risco-baixo{border-left-color:var(--ok)}
@@ -40,8 +45,8 @@ flex-wrap:wrap}
 border-radius:4px;padding:12px;margin:0;max-width:78ch}
 ul,ol{margin:0;padding:0;list-style:none}
 #sessoes li{padding:6px 0;border-bottom:1px solid var(--borda)}
-#sessoes .id{color:var(--texto)}
-#sessoes .meta{color:var(--fraco);font-size:11px}
+#sessoes .id{color:var(--texto);display:block}
+#sessoes .meta{color:var(--fraco);font-size:11px;display:block}
 #sessoes .morta .id{color:var(--fraco);text-decoration:line-through}
 #fluxo li:not(.vazio){display:grid;grid-template-columns:64px 104px 1fr auto;gap:10px;padding:3px 0;
 border-bottom:1px solid #1d212a}
@@ -81,6 +86,7 @@ margin:0;max-height:170px;overflow:auto;white-space:pre-wrap;color:var(--fraco);
 .agente.alerta{border-color:var(--l2)}
 .agente .nome{display:block;margin-bottom:2px}
 .agente .det{color:var(--fraco);font-size:11px;display:block}
+#card-conteudo .m{white-space:nowrap}
 .agente button{margin-top:8px;background:var(--painel);color:var(--texto);border:1px solid var(--borda);
 border-radius:4px;padding:3px 10px;font:inherit;cursor:pointer}
 .agente button:hover{border-color:var(--l1)}

@@ -84,6 +84,10 @@ export async function abrirBrowser() {
   await chamar('Runtime.enable')
   await chamar('Log.enable')
   await chamar('Page.enable')
+  // Viewport explicita: sem isto a captura sai no tamanho padrao do headless.
+  await chamar('Emulation.setDeviceMetricsOverride', {
+    width: 1440, height: 800, deviceScaleFactor: 1, mobile: false,
+  })
 
   const cliente = {
     erros,
@@ -114,10 +118,19 @@ export async function abrirBrowser() {
       }
       throw new Error(`esperei ${limite}ms e continuou falso: ${expressao}`)
     },
+    /** PNG da viewport, em base64 -- usado para inspecao visual. */
+    async capturar() {
+      const r = await chamar('Page.captureScreenshot', { format: 'png' })
+      return Buffer.from(r.data, 'base64')
+    },
     async fechar() {
       ws.close()
       proc.kill()
-      rmSync(perfil, { recursive: true, force: true })
+      try {
+        rmSync(perfil, { recursive: true, force: true, maxRetries: 3 })
+      } catch {
+        /* o Chrome ainda pode estar soltando o perfil; nao e problema do teste */
+      }
     },
   }
   return cliente

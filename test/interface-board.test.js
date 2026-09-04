@@ -31,8 +31,14 @@ after(async () => { await browser?.fechar(); await fechar?.() })
 
 test('da para trocar de tela sem recarregar a pagina', { skip: pular }, async () => {
   await browser.avaliar(`document.querySelector('nav button[data-tela="board"]').click()`)
-  await browser.esperar(`document.getElementById('tela-board').hidden === false`)
-  assert.equal(await browser.avaliar(`document.getElementById('tela-fluxo').hidden`), true)
+  await browser.esperar(`document.getElementById('tela-board').offsetParent !== null`)
+  // Visibilidade de verdade, e nao a propriedade: uma regra de CSS com
+  // especificidade maior vence o `hidden` e a propriedade continua dizendo true.
+  assert.equal(
+    await browser.avaliar(`document.getElementById('tela-fluxo').offsetParent === null`),
+    true,
+    'a tela anterior precisa sumir de fato, nao so no atributo'
+  )
 })
 
 test('o board mostra as colunas do pipeline e os cards em cada uma', { skip: pular }, async () => {
@@ -54,7 +60,7 @@ test('risco alto e visivel sem precisar abrir o card', { skip: pular }, async ()
 
 test('clicar num card abre a spec dele', { skip: pular }, async () => {
   await browser.avaliar(`document.querySelector('#tela-board [data-card="CARD-042"]').click()`)
-  await browser.esperar(`document.getElementById('tela-card').hidden === false`)
+  await browser.esperar(`document.getElementById('tela-card').offsetParent !== null`)
   const texto = await browser.avaliar(`document.getElementById('tela-card').textContent`)
   assert.match(texto, /R1\. O sistema DEVE invalidar/)
   assert.match(texto, /alto/)
