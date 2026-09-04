@@ -1,0 +1,17 @@
+{
+  "name": "sle-console",
+  "version": "0.1.0",
+  "description": "Observa, em tempo real, o Sistema de Loops de Engenharia rodando na sua maquina.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "sle": "./bin/sle.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "start": "node bin/sle.js"
+  }
+}

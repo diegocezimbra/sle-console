@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>SLE Console</title>
+<link rel="stylesheet" href="/style.css" />
+<header>
+  <h1>SLE Console</h1>
+  <span id="conexao" class="pill">conectando…</span>
+  <span class="pill" id="contadores">—</span>
+</header>
+
+<main>
+  <section id="sessoes-painel">
+    <h2>Agentes</h2>
+    <ul id="sessoes"><li class="vazio">nenhuma sessão ainda</li></ul>
+  </section>
+
+  <section id="regua-painel">
+    <h2>Régua de loops</h2>
+    <canvas id="regua" height="120"></canvas>
+    <p class="legenda">
+      <span class="l1">L1 turno</span>
+      <span class="l2">L2 etapa</span>
+      <span class="l3">L3 card</span>
+    </p>
+  </section>
+
+  <section id="fluxo-painel">
+    <h2>Fluxo ao vivo</h2>
+    <ol id="fluxo"><li class="vazio">esperando o primeiro evento</li></ol>
+  </section>
+</main>
+<script type="module" src="/app.js"></script>
