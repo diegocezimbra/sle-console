@@ -63,4 +63,13 @@ o primeiro paint inteiro sem qualquer sinal no servidor.
 2 — Ler (cards, board, git) · 3 — Editar (gates, prompts, agentes) ·
 4 — Controlar (runner, modelos por agente, parada de emergência).
 
-Especificação completa em [`../docs/sle-console-especificacao.md`](../docs/sle-console-especificacao.md).
+A especificação completa das quatro fases não faz parte deste repositório —
+ela é o documento de método de onde este daemon saiu.
+
+## Relacionados
+
+- [`ai-warden`](https://github.com/diegocezimbra/ai-warden) — o outro consumidor
+  do mesmo hook: em vez de pintar tela, impede uma sessão de destruir o
+  trabalho da outra
+- [`ai-memory`](https://github.com/akitaonrails/ai-memory) — memória persistente
+  entre agentes. Os três convivem no mesmo evento de hook, sem se falarem
