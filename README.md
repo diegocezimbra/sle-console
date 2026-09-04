@@ -8,9 +8,12 @@ tempo cada coisa acontece.
 repositório.
 
 ```bash
-npx sle          # ou: node bin/sle.js
+git clone https://github.com/diegocezimbra/sle-console && cd sle-console
+node bin/sle.js
 # sle console  http://127.0.0.1:7717
 ```
+
+Não está no npm ainda — nada a instalar, nada a compilar: é Node e mais nada.
 
 Para alimentar, aponte os hooks do Claude Code para o daemon:
 
