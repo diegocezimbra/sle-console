@@ -5,7 +5,7 @@
  * seu ambiente de trabalho, cada dependencia e superficie de ataque.
  */
 import { createServer } from 'node:http'
-import { readdirSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync, renameSync, mkdirSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -18,6 +18,10 @@ import { conter, salvarArquivo } from './escrita.js'
 import { testarComando } from './verificacao.js'
 import { Runner } from './runner.js'
 import { decidirGate } from './gates.js'
+import { calcularMetricas } from './metricas.js'
+import { montarHistorico } from './historico.js'
+import { extrairMedidas } from './otel.js'
+import { COLUNAS, lerCard } from './cards.js'
 
 const WEB = join(dirname(fileURLToPath(import.meta.url)), '..', 'web')
 
@@ -70,6 +74,17 @@ export function criarDaemon({ dados, projeto = process.cwd(), tetoDiarioUsd = In
       })
     }
     if (rota === '/api/gates' && req.method === 'GET') return json(res, lerGates())
+    if (rota === '/api/historico' && req.method === 'GET') {
+      const q = new URL(req.url, 'http://x').searchParams
+      return json(res, montarHistorico(estado.todos(), { de: q.get('de'), ate: q.get('ate') }))
+    }
+    if (rota === '/api/metrics' && req.method === 'GET') {
+      return json(res, calcularMetricas(estado.todos()))
+    }
+    if (req.method === 'POST' && /^\/api\/cards\/[^/]+\/move$/.test(rota)) {
+      const id = decodeURIComponent(rota.split('/')[3])
+      return lerCorpo(req, (corpo) => moverCard(id, corpo, res))
+    }
     if (req.method === 'POST' && /^\/api\/gates\/[^/]+\/decide$/.test(rota)) {
       const id = decodeURIComponent(rota.split('/')[3])
       const gate = (lerGates().gates ?? []).find((g) => g.id === id)
@@ -81,7 +96,16 @@ export function criarDaemon({ dados, projeto = process.cwd(), tetoDiarioUsd = In
         } catch {
           /* card vazio decide pelo modo do gate */
         }
-        json(res, await decidirGate(projeto, gate, card))
+        const decisao = await decidirGate(projeto, gate, card)
+        // A decisao vira evento: sem isso as metricas nao teriam o que medir.
+        registrar({
+          kind: 'gate.decidido',
+          loop: 'L3',
+          card: card.id ?? null,
+          session: null,
+          payload: { ...decisao, card: card.id ?? null },
+        })
+        json(res, decisao)
       })
     }
     if (req.method === 'GET' && rota === '/api/dir') {
@@ -162,6 +186,47 @@ export function criarDaemon({ dados, projeto = process.cwd(), tetoDiarioUsd = In
     })
   }
 
+  /** Move o arquivo e alinha o `status` -- pasta e frontmatter nunca divergem. */
+  function moverCard(id, corpo, res) {
+    let para
+    try {
+      para = JSON.parse(corpo).para
+    } catch {
+      para = null
+    }
+    if (!COLUNAS.includes(para)) {
+      res.writeHead(422, { 'content-type': 'application/json; charset=utf-8' })
+      return res.end(JSON.stringify({ erro: `coluna desconhecida: "${para}"` }))
+    }
+    const card = indexarCards(projeto).cards.find((c) => c.id === id)
+    if (!card) return fim(res, 404)
+
+    const destinoDir = join(projeto, 'cards', para)
+    const destino = join(destinoDir, card.arquivo.split(/[/\\]/).pop())
+    try {
+      const texto = readFileSync(card.arquivo, 'utf8').replace(/^status:.*$/m, `status: ${para}`)
+      mkdirSync(destinoDir, { recursive: true })
+      writeFileSync(card.arquivo, texto)
+      renameSync(card.arquivo, destino)
+    } catch (e) {
+      res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' })
+      return res.end(JSON.stringify({ erro: e.message }))
+    }
+    registrar({ kind: 'card.move', loop: 'L3', card: id, session: null, payload: { para } })
+    return json(res, { ok: true, id, para })
+  }
+
+  function registrar(parcial) {
+    const evento = {
+      ts: new Date().toISOString(),
+      agent: null,
+      parent_agent: null,
+      ...parcial,
+    }
+    estado.registrar(evento)
+    transmitir(evento)
+  }
+
   function lerGates() {
     try {
       return JSON.parse(readFileSync(join(projeto, 'sle', 'gates', 'pipeline.json'), 'utf8'))
@@ -217,7 +282,42 @@ export function criarDaemon({ dados, projeto = process.cwd(), tetoDiarioUsd = In
     for (const o of ouvintes) o.write(linha)
   }
 
-  return { servidor, estado, observador, runner }
+  // Receptor OTLP num servidor proprio: o exportador do Claude Code fala com
+  // um endpoint dedicado, e misturar isso com a API da tela so confunde.
+  const otlp = createServer((req, res) => {
+    if (req.method !== 'POST' || !req.url.startsWith('/v1/metrics')) return fim(res, 404)
+    let corpo = ''
+    req.on('data', (c) => (corpo += c))
+    req.on('end', () => {
+      try {
+        for (const medida of extrairMedidas(JSON.parse(corpo))) {
+          registrar({
+            kind: medida.tipo === 'custo' ? 'custo' : 'tokens',
+            loop: 'L2',
+            session: medida.session,
+            card: cardDaSessao(medida.session),
+            payload: medida.tipo === 'custo' ? { usd: medida.usd } : { tokens: medida.quantidade },
+          })
+        }
+      } catch {
+        /* payload ruim nao pode derrubar o receptor */
+      }
+      // 200 sempre: exportador OTel que recebe erro para de tentar.
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end('{}')
+    })
+  })
+
+  /** Liga a sessao ao card em que ela trabalhou, quando da. */
+  function cardDaSessao(session) {
+    for (let i = estado.snapshot().fluxo.length - 1; i >= 0; i--) {
+      const e = estado.snapshot().fluxo[i]
+      if (e.session === session && e.card) return e.card
+    }
+    return null
+  }
+
+  return { servidor, estado, observador, runner, otlp }
 }
 
 const json = (res, dados) => {

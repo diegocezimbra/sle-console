@@ -41,6 +41,18 @@ test('SessionEnd apaga o agente no painel', () => {
   assert.equal(e.snapshot().sessoes[0].ativa, false)
 })
 
+test('evento de sistema nao vira sessao fantasma no painel de agentes', () => {
+  const e = new Estado(dir())
+  e.registrar(ev({ kind: 'session.start', session: 's1' }))
+  e.registrar(ev({ kind: 'gate.decidido', session: null, payload: { gate: 'G1', decisao: 'passou' } }))
+  e.registrar(ev({ kind: 'card.move', session: null, card: 'CARD-1', payload: { para: 'done' } }))
+
+  const s = e.snapshot()
+  assert.equal(s.sessoes.length, 1, 'decisao de gate nao e um agente')
+  assert.equal(s.sessoes[0].id, 's1')
+  assert.equal(s.fluxo.length, 3, 'mas os eventos continuam no fluxo')
+})
+
 test('o fluxo guarda os ultimos eventos, sem crescer para sempre', () => {
   const e = new Estado(dir(), { janela: 3 })
   for (let i = 0; i < 10; i++) e.registrar(ev({ payload: { tool: `T${i}` } }))

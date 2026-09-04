@@ -28,6 +28,25 @@ export class Estado {
     return evento
   }
 
+  /** Todos os eventos do disco -- as metricas olham a historia, nao a janela. */
+  todos() {
+    try {
+      return readFileSync(this.arquivo, 'utf8')
+        .split('\n')
+        .filter(Boolean)
+        .map((l) => {
+          try {
+            return JSON.parse(l)
+          } catch {
+            return null
+          }
+        })
+        .filter(Boolean)
+    } catch {
+      return []
+    }
+  }
+
   snapshot() {
     return {
       sessoes: [...this.sessoes.values()],
@@ -41,6 +60,17 @@ export class Estado {
     this.contadores.eventos++
     if (e.payload?.ok === false) this.contadores.falhas++
 
+    this.fluxo.push(e)
+    if (this.fluxo.length > this.#janela) this.fluxo.shift()
+
+    if (e.kind === 'subagent.start' && e.parent_agent) {
+      this.grafo.push({ de: e.parent_agent, para: e.session, agente: e.agent })
+    }
+
+    // Evento de sistema (decisao de gate, movimentacao de card) nao tem sessao,
+    // e nao pode virar um agente fantasma no painel.
+    if (!e.session) return
+
     const s = this.sessoes.get(e.session) ?? {
       id: e.session, agente: e.agent, ativa: true, eventos: 0, inicio: e.ts, ultimo: e.ts,
     }
@@ -50,13 +80,6 @@ export class Estado {
     if (e.kind === 'session.end') s.ativa = false
     if (e.kind === 'session.start') s.ativa = true
     this.sessoes.set(e.session, s)
-
-    if (e.kind === 'subagent.start' && e.parent_agent) {
-      this.grafo.push({ de: e.parent_agent, para: e.session, agente: e.agent })
-    }
-
-    this.fluxo.push(e)
-    if (this.fluxo.length > this.#janela) this.fluxo.shift()
   }
 
   #remontar() {

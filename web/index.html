@@ -11,6 +11,8 @@
     <button data-tela="board">Board</button>
     <button data-tela="editar">Editar</button>
     <button data-tela="controle">Controle</button>
+    <button data-tela="metricas">Métricas</button>
+    <button data-tela="historico">Histórico</button>
     <button data-tela="card" hidden>Card</button>
   </nav>
   <span class="cresce"></span>
@@ -73,6 +75,24 @@
     <div id="agentes"></div>
     <h2>Rodando agora</h2>
     <ul id="ativos"><li class="vazio">nenhum agente rodando</li></ul>
+  </section>
+
+  <section id="tela-metricas" hidden>
+    <h2>Iteração entre agentes</h2>
+    <canvas id="grafo" height="200"></canvas>
+    <h2>Métricas</h2>
+    <div id="metricas"></div>
+  </section>
+
+  <section id="tela-historico" hidden>
+    <div class="barra">
+      <h2>Histórico</h2>
+      <span class="cresce"></span>
+      <label class="filtro">de <input id="de" type="date" /></label>
+      <label class="filtro">até <input id="ate" type="date" /></label>
+      <button id="hoje">Hoje</button>
+    </div>
+    <ol id="dias"></ol>
   </section>
 
   <section id="tela-card" hidden>

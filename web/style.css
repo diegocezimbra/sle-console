@@ -94,3 +94,34 @@ border-radius:4px;padding:3px 10px;font:inherit;cursor:pointer}
 padding:5px 12px;font:inherit;cursor:pointer}
 .perigo:hover{background:var(--erro);color:#fff}
 #ativos li.processo{padding:5px 0;border-bottom:1px solid var(--borda);color:var(--fraco)}
+
+#tela-metricas{display:flex;flex-direction:column;gap:10px}
+#grafo{border:1px solid var(--borda);border-radius:4px;background:var(--fundo)}
+#metricas{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px}
+.metrica{background:var(--fundo);border:1px solid var(--borda);border-radius:4px;padding:10px}
+.metrica .nome{display:block;color:var(--fraco);font-size:11px;text-transform:uppercase;
+letter-spacing:.06em;margin-bottom:5px}
+.metrica .valor{display:block;white-space:pre-wrap}
+.metrica.sem-dado{border-style:dashed}
+.metrica.sem-dado .valor{color:var(--fraco);font-style:italic}
+.metrica.alerta{border-color:var(--l2)}
+.card .mover{display:flex;gap:4px;margin-top:6px}
+.card .mover button{background:var(--painel);border:1px solid var(--borda);color:var(--fraco);
+border-radius:3px;font:inherit;font-size:11px;padding:0 6px;cursor:pointer}
+.card .mover button:hover{color:var(--texto);border-color:var(--l1)}
+
+#tela-historico{display:flex;flex-direction:column;gap:10px}
+.filtro{color:var(--fraco);font-size:11px;display:flex;gap:5px;align-items:center}
+.filtro input{background:var(--fundo);color:var(--texto);border:1px solid var(--borda);
+border-radius:4px;padding:3px 6px;font:inherit;font-size:11px}
+#hoje{background:var(--painel);color:var(--texto);border:1px solid var(--borda);border-radius:4px;
+padding:4px 10px;font:inherit;font-size:11px;cursor:pointer}
+#dias{display:flex;flex-direction:column;gap:8px;overflow:auto}
+.dia{background:var(--fundo);border:1px solid var(--borda);border-radius:4px;padding:10px}
+.dia>header{display:flex;gap:10px;align-items:baseline;margin-bottom:6px}
+.dia .data{font-size:13px}
+.dia .resumo{color:var(--fraco);font-size:11px}
+.dia .custo{margin-left:auto;color:var(--l2)}
+.dia .linha{display:flex;gap:8px;font-size:11px;color:var(--fraco);padding:2px 0}
+.dia .entregue{color:var(--ok)}
+.dia .reprovou{color:var(--erro)}

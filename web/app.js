@@ -10,8 +10,12 @@ function mostrar(tela) {
   for (const s of document.querySelectorAll('main > section')) s.hidden = s.id !== `tela-${tela}`
   for (const b of document.querySelectorAll('nav button')) b.classList.toggle('ativa', b.dataset.tela === tela)
   if (tela === 'fluxo') pintarRegua()
+  // Cada tela relê o disco ao ser aberta: o arquivo pode ter mudado no editor.
+  if (tela === 'board') recarregarIndice()
   if (tela === 'editar') pintarArquivos()
   if (tela === 'controle') pintarControle()
+  if (tela === 'metricas') pintarMetricas()
+  if (tela === 'historico') pintarHistorico()
 }
 for (const b of document.querySelectorAll('nav button')) {
   b.addEventListener('click', () => mostrar(b.dataset.tela))
@@ -132,6 +136,30 @@ function botaoDeCard(c) {
   b.dataset.card = c.id
   b.append(campo('cid', c.id), campo('titulo', c.title ?? ''))
   b.addEventListener('click', () => abrirCard(c.id))
+
+  // Mover é uma ação do board: ir buscar o arquivo no editor para trocar uma
+  // linha de frontmatter seria trabalho manual num lugar que já sabe a ordem.
+  const mover = document.createElement('span')
+  mover.className = 'mover'
+  for (const [rotulo, dir] of [['←', -1], ['→', 1]]) {
+    const m = document.createElement('button')
+    m.textContent = rotulo
+    m.dataset.mover = c.id
+    m.dataset.dir = String(dir)
+    m.title = dir < 0 ? 'voltar uma coluna' : 'avançar uma coluna'
+    m.addEventListener('click', async (ev) => {
+      ev.stopPropagation()
+      const destino = COLUNAS[COLUNAS.indexOf(c.coluna) + dir]
+      if (!destino) return
+      await fetch(`/api/cards/${encodeURIComponent(c.id)}/move`, {
+        method: 'POST',
+        body: JSON.stringify({ para: destino }),
+      })
+      await recarregarIndice()
+    })
+    mover.append(m)
+  }
+  b.append(mover)
   return b
 }
 
@@ -279,6 +307,169 @@ $('parada').addEventListener('click', async () => {
   await fetch('/api/emergency-stop', { method: 'POST' })
   pintarControle()
 })
+
+// ── Métricas e grafo ──────────────────────────────────────────────────────
+const NOMES = {
+  turnosPorCard: 'turnos por card',
+  reprovacoesPorGate: 'reprovações por gate',
+  gatesQueNuncaReprovam: 'gates que nunca reprovam',
+  taxaDeEscalonamento: 'taxa de escalonamento',
+  tempoDeReviewHumano: 'tempo de review humano',
+  custoPorCard: 'custo por card',
+  coberturaDeMutacao: 'cobertura de mutação',
+  changeFailureRate: 'change failure rate',
+}
+
+async function pintarMetricas() {
+  const m = await (await fetch('/api/metrics')).json()
+  $('metricas').replaceChildren(
+    ...Object.entries(m).map(([chave, { valor, estado }]) => {
+      const div = document.createElement('div')
+      // Sem dado é estado, não zero: zero seria uma afirmação que não temos.
+      const semDado = valor === null
+      const alerta = chave === 'gatesQueNuncaReprovam' && Array.isArray(valor) && valor.length > 0
+      div.className = `metrica${semDado ? ' sem-dado' : ''}${alerta ? ' alerta' : ''}`
+      if (alerta) div.title = 'verificação que nunca reprova está quebrada ou é decoração'
+      div.append(campo('nome', NOMES[chave] ?? chave), campo('valor', semDado ? estado : formatar(chave, valor)))
+      return div
+    })
+  )
+  desenharGrafo()
+}
+
+function formatar(chave, valor) {
+  if (chave === 'taxaDeEscalonamento') return `${(valor * 100).toFixed(0)}%`
+  if (chave === 'tempoDeReviewHumano') return `${Math.round(valor / 60000)} min`
+  if (Array.isArray(valor)) return valor.length ? valor.join(', ') : 'nenhum'
+  if (valor && typeof valor === 'object') {
+    return Object.entries(valor)
+      .map(([k, v]) => `${k}: ${legivel(v)}`)
+      .join('\n')
+  }
+  return String(valor)
+}
+
+/** `{reprovou: 2, passou: 1}` vira `2 reprovou · 1 passou`. */
+function legivel(v) {
+  if (v && typeof v === 'object') {
+    return Object.entries(v)
+      .map(([k, n]) => `${n} ${k.replace('_', ' ')}`)
+      .join(' · ')
+  }
+  return typeof v === 'number' && !Number.isInteger(v) ? v.toFixed(2) : String(v)
+}
+
+/** Grafo de iteração: quantas voltas o par maker/checker deu, e onde. */
+async function desenharGrafo() {
+  const s = await (await fetch('/api/snapshot')).json()
+  const c = $('grafo')
+  if (!c.clientWidth) return
+  const ctx = c.getContext('2d')
+  const l = (c.width = c.clientWidth * devicePixelRatio)
+  const a = (c.height = 200 * devicePixelRatio)
+  ctx.clearRect(0, 0, l, a)
+
+  const arestas = s.grafo ?? []
+  if (!arestas.length) {
+    ctx.fillStyle = '#8b93a1'
+    ctx.font = `${12 * devicePixelRatio}px ui-monospace, monospace`
+    ctx.fillText('nenhum subagente ainda', 12 * devicePixelRatio, 24 * devicePixelRatio)
+    return
+  }
+
+  // O grafo e sobre papeis, nao sobre ids: "implementer -> adversarial-reviewer"
+  // diz o que aconteceu; "s-b -> s-c" nao diz nada.
+  const nomeDe = new Map((s.sessoes ?? []).map((x) => [x.id, x.agente ?? x.id.slice(0, 8)]))
+  for (const e of arestas) if (e.agente) nomeDe.set(e.para, e.agente)
+  const rotulo = (id) => nomeDe.get(id) ?? String(id).slice(0, 8)
+
+  const nos = [...new Set(arestas.flatMap((e) => [e.de, e.para]))]
+  const pos = new Map(nos.map((n, i) => [n, {
+    x: (l / (nos.length + 1)) * (i + 1),
+    y: a / 2 + (i % 2 ? 34 : -34) * devicePixelRatio,
+  }]))
+
+  ctx.strokeStyle = '#4aa3df'
+  ctx.lineWidth = 1.5 * devicePixelRatio
+  for (const e of arestas) {
+    const de = pos.get(e.de)
+    const para = pos.get(e.para)
+    ctx.beginPath()
+    ctx.moveTo(de.x, de.y)
+    ctx.lineTo(para.x, para.y)
+    ctx.stroke()
+  }
+
+  ctx.font = `${11 * devicePixelRatio}px ui-monospace, monospace`
+  ctx.textAlign = 'center'
+  for (const [nome, p] of pos) {
+    ctx.fillStyle = '#171a21'
+    ctx.strokeStyle = '#252a34'
+    const texto = rotulo(nome)
+    const largura = ctx.measureText(texto).width + 16 * devicePixelRatio
+    ctx.fillRect(p.x - largura / 2, p.y - 11 * devicePixelRatio, largura, 22 * devicePixelRatio)
+    ctx.strokeRect(p.x - largura / 2, p.y - 11 * devicePixelRatio, largura, 22 * devicePixelRatio)
+    ctx.fillStyle = '#d7dae0'
+    ctx.fillText(texto, p.x, p.y + 4 * devicePixelRatio)
+  }
+  ctx.textAlign = 'left'
+}
+
+// ── Histórico ─────────────────────────────────────────────────────────────
+$('hoje').addEventListener('click', () => {
+  const hoje = new Date().toISOString().slice(0, 10)
+  $('de').value = hoje
+  $('ate').value = hoje
+  pintarHistorico()
+})
+for (const id of ['de', 'ate']) $(id).addEventListener('change', pintarHistorico)
+
+async function pintarHistorico() {
+  const q = new URLSearchParams()
+  if ($('de').value) q.set('de', $('de').value)
+  if ($('ate').value) q.set('ate', $('ate').value)
+  const dias = await (await fetch(`/api/historico?${q}`)).json()
+
+  if (!dias.length) {
+    $('dias').replaceChildren(campoLi('nenhum evento no período'))
+    return
+  }
+  $('dias').replaceChildren(
+    ...dias.map((d) => {
+      const li = document.createElement('li')
+      li.className = 'dia'
+
+      const cab = document.createElement('header')
+      cab.append(
+        campo('data', d.data),
+        campo('resumo', `${d.eventos} eventos · ${d.agentes.length || 'nenhum'} agente(s)`),
+        // Custo ausente é "sem telemetria", não zero.
+        campo('custo', d.custoUsd === null ? 'sem telemetria de custo' : `${d.custoUsd.toFixed(2)} USD`)
+      )
+      li.append(cab)
+
+      if (d.entregues.length) {
+        li.append(linha('entregue', `entregues: ${d.entregues.join(', ')}`))
+      }
+      if (d.movimentacoes.length) {
+        li.append(linha('', d.movimentacoes.map((m) => `${m.card} → ${m.para}`).join(' · ')))
+      }
+      if (d.agentes.length) li.append(linha('', `agentes: ${d.agentes.join(', ')}`))
+      if (d.reprovacoes) li.append(linha('reprovou', `${d.reprovacoes} reprovação(ões) de gate`))
+      for (const [card, usd] of Object.entries(d.custoPorCard)) {
+        li.append(linha('', `${card}: ${usd.toFixed(2)} USD`))
+      }
+      return li
+    })
+  )
+}
+
+function linha(classe, texto) {
+  const div = document.createElement('div')
+  div.className = `linha ${classe}`.trim()
+  div.textContent = texto
+  return div
+}
 
 function campo(classe, texto) {
   const s = document.createElement('span')
