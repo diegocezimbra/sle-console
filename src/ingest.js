@@ -50,12 +50,18 @@ export function normalizar(cru, agora = new Date()) {
     kind,
     loop: ESCALA[kind] ?? 'L1',
     card: cru.card ?? null,
-    agent: cru.agent_type ?? cru.agent ?? null,
+    agent: vazioEhNulo(cru.agent_type ?? cru.agent),
     session,
-    parent_agent: cru.parent_agent ?? null,
+    // Medido em 2026-09-04: o Claude Code manda `SubagentStop` com `agent`
+    // vazio e sem `parent_agent` -- os campos que a spec prometia nao vem.
+    // Sem este fallback o grafo de iteracao fica eternamente vazio.
+    parent_agent: cru.parent_agent ?? (ehSubagente(evento) ? session : null),
     payload: corpo(kind, cru),
   }
 }
+
+const vazioEhNulo = (v) => (v == null || v === '' ? null : v)
+const ehSubagente = (evento) => evento === 'SubagentStart' || evento === 'SubagentStop'
 
 function corpo(kind, cru) {
   // `cwd` acompanha todo evento: e o que permite chamar a sessao pelo nome do

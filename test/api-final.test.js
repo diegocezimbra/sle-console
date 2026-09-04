@@ -83,5 +83,7 @@ test('o grafo de agentes vem no snapshot, pronto para desenhar', async () => {
     session_id: 'filho', hook_event_name: 'SubagentStart',
     agent_type: 'adversarial-reviewer', parent_agent: 'pai' }) })
   const s = await (await fetch(`${base}/api/snapshot`)).json()
-  assert.deepEqual(s.grafo, [{ de: 'pai', para: 'filho', agente: 'adversarial-reviewer' }])
+  assert.deepEqual(s.grafo, [
+    { de: 'pai', para: 'adversarial-reviewer', agente: 'adversarial-reviewer', anonimo: false },
+  ])
 })

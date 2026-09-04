@@ -69,3 +69,26 @@ test('o card sai do cwd quando ha um card em foco, senao fica nulo', () => {
   const e = normalizar({ ...base, hook_event_name: 'Stop' })
   assert.equal(e.card, null)
 })
+
+// ── o que o Claude Code REALMENTE manda em subagente ────────────────────────
+// Medido em 2026-09-04: `SubagentStop` chega com `agent` vazio e sem
+// `parent_agent`. A spec prometia `agent_id`/`agent_type`; não vêm.
+
+test('agente vazio vira nulo, e nao um agente de nome ""', () => {
+  const e = normalizar({ session_id: 's1', cwd: '/r', hook_event_name: 'SubagentStop', agent_type: '' })
+  assert.equal(e.agent, null)
+})
+
+test('subagent.stop sem pai declarado usa a propria sessao como pai', () => {
+  // É o que dá para saber: a sessão que reportou o fim lançou o subagente.
+  const e = normalizar({ session_id: 'pai-1', cwd: '/r', hook_event_name: 'SubagentStop' })
+  assert.equal(e.kind, 'subagent.stop')
+  assert.equal(e.parent_agent, 'pai-1', 'sem isto o grafo fica eternamente vazio')
+})
+
+test('quando o pai vem declarado, ele e respeitado', () => {
+  const e = normalizar({ session_id: 'filho', cwd: '/r', hook_event_name: 'SubagentStart',
+    parent_agent: 'pai-real', agent_type: 'reviewer' })
+  assert.equal(e.parent_agent, 'pai-real')
+  assert.equal(e.agent, 'reviewer')
+})

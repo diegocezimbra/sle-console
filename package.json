@@ -13,5 +13,28 @@
   "scripts": {
     "test": "node --test test/*.test.js",
     "start": "node bin/sle.js"
-  }
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "web/",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/diegocezimbra/sle-console.git"
+  },
+  "homepage": "https://github.com/diegocezimbra/sle-console#readme",
+  "bugs": {
+    "url": "https://github.com/diegocezimbra/sle-console/issues"
+  },
+  "keywords": [
+    "ai-agents",
+    "claude-code",
+    "observability",
+    "sse",
+    "zero-dependency",
+    "hooks"
+  ],
+  "author": "Diego Cezimbra"
 }

@@ -98,7 +98,8 @@ test('o grafo de agentes sai das arestas pai-filho', () => {
   const e = new Estado(dir())
   e.registrar(ev({ kind: 'subagent.start', session: 'sub', agent: 'reviewer', parent_agent: 's1' }))
   const g = e.snapshot().grafo
-  assert.deepEqual(g, [{ de: 's1', para: 'sub', agente: 'reviewer' }])
+  // Quando o harness diz o nome, o nó é o nome; `anonimo` marca quando não diz.
+  assert.deepEqual(g, [{ de: 's1', para: 'reviewer', agente: 'reviewer', anonimo: false }])
 })
 
 test('reinicio nao perde historia: o estado remonta do JSONL', () => {

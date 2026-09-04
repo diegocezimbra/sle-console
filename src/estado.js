@@ -76,8 +76,19 @@ export class Estado {
     this.fluxo.push(e)
     if (this.fluxo.length > this.#janela) this.fluxo.shift()
 
-    if (e.kind === 'subagent.start' && e.parent_agent) {
-      this.grafo.push({ de: e.parent_agent, para: e.session, agente: e.agent })
+    // O start nem sempre chega; o stop chega. Contar pelo que existe.
+    if ((e.kind === 'subagent.start' || e.kind === 'subagent.stop') && e.parent_agent) {
+      const igual = (x) => x.de === e.parent_agent && x.para === (e.agent ?? e.session)
+      if (!this.grafo.some(igual)) {
+        this.grafo.push({
+          de: e.parent_agent,
+          para: e.agent ?? e.session,
+          agente: e.agent,
+          // Quando o harness não diz quem é o subagente, isto fica explícito
+          // na tela em vez de virar um nó com nome de uuid sem explicação.
+          anonimo: !e.agent,
+        })
+      }
     }
 
     // Evento de sistema (decisao de gate, movimentacao de card) nao tem sessao,

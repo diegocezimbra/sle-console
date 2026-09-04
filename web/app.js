@@ -452,6 +452,9 @@ async function desenharGrafo() {
   // diz o que aconteceu; "s-b -> s-c" nao diz nada.
   const nomeDe = new Map((s.sessoes ?? []).map((x) => [x.id, x.agente ?? x.id.slice(0, 8)]))
   for (const e of arestas) if (e.agente) nomeDe.set(e.para, e.agente)
+  // O harness nem sempre diz o nome do subagente: melhor dizer isso do que
+  // pintar um nó com um uuid sem explicação.
+  for (const e of arestas) if (e.anonimo) nomeDe.set(e.para, 'subagente')
   const rotulo = (id) => nomeDe.get(id) ?? String(id).slice(0, 8)
 
   const nos = [...new Set(arestas.flatMap((e) => [e.de, e.para]))]
