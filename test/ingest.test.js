@@ -49,6 +49,12 @@ test('cada evento sabe em que escala de tempo vive (a regua de loops)', () => {
   assert.equal(loopDe({ hook_event_name: 'SessionStart' }), 'L2')
 })
 
+test('todo evento carrega o cwd: e o que da nome ao projeto no painel', () => {
+  const e = normalizar({ ...base, hook_event_name: 'PostToolUse', tool_name: 'Edit',
+    tool_input: { file_path: 'a.ts' } })
+  assert.equal(e.payload.cwd, '/repo')
+})
+
 test('payload sem sessao e descartado em vez de virar evento anonimo', () => {
   assert.equal(normalizar({ hook_event_name: 'PostToolUse' }), null)
   assert.equal(normalizar(null), null)

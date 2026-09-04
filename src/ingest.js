@@ -58,9 +58,12 @@ export function normalizar(cru, agora = new Date()) {
 }
 
 function corpo(kind, cru) {
+  // `cwd` acompanha todo evento: e o que permite chamar a sessao pelo nome do
+  // projeto em vez de por um uuid.
   if (kind === 'tool.post' || kind === 'tool.pre') {
     const entrada = cru.tool_input ?? {}
     return {
+      cwd: cru.cwd ?? null,
       tool: cru.tool_name ?? null,
       file: entrada.file_path ?? null,
       command: entrada.command ?? null,

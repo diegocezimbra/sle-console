@@ -75,3 +75,25 @@ test('gate inexistente nao e inventado', async () => {
   const r = await fetch(`${base}/api/gates/NAO-EXISTE/decide`, { method: 'POST', body: '{}' })
   assert.equal(r.status, 404)
 })
+
+/// As sessoes observadas sao agentes rodando tanto quanto os processos que o
+/// console lancou -- dizer "nenhum agente rodando" com cinco sessoes vivas e a
+/// tela mentindo por omissao.
+test('a lista de quem esta rodando inclui as sessoes observadas', async () => {
+  await fetch(`${base}/api/hook`, { method: 'POST', body: JSON.stringify({
+    session_id: 'sessao-observada', cwd: '/home/dev/13-chatomnichannel',
+    hook_event_name: 'PostToolUse', tool_name: 'Edit',
+    tool_input: { file_path: 'a.ts' }, tool_response: { success: true } }) })
+
+  const j = await (await fetch(`${base}/api/agents`)).json()
+  const obs = j.sessoes.find((s) => s.id === 'sessao-observada')
+  assert.ok(obs, 'a sessao observada precisa aparecer entre quem esta rodando')
+  assert.equal(obs.projeto, '13-chatomnichannel', 'com o nome do projeto, nao o uuid')
+  assert.equal(obs.ativa, true)
+})
+
+test('sessao observada e processo lancado sao coisas distintas na resposta', async () => {
+  const j = await (await fetch(`${base}/api/agents`)).json()
+  assert.ok(Array.isArray(j.ativos), 'processos que o console lancou')
+  assert.ok(Array.isArray(j.sessoes), 'sessoes que o console observa')
+})

@@ -93,7 +93,12 @@ border-radius:4px;padding:3px 10px;font:inherit;cursor:pointer}
 .perigo{background:transparent;color:var(--erro);border:1px solid var(--erro);border-radius:4px;
 padding:5px 12px;font:inherit;cursor:pointer}
 .perigo:hover{background:var(--erro);color:#fff}
-#ativos li.processo{padding:5px 0;border-bottom:1px solid var(--borda);color:var(--fraco)}
+#ativos li.processo{padding:5px 0;border-bottom:1px solid var(--borda);color:var(--fraco);
+display:flex;gap:10px;align-items:baseline}
+#ativos .origem{font-size:10px;text-transform:uppercase;letter-spacing:.06em;padding:1px 6px;
+border:1px solid var(--borda);border-radius:999px}
+#ativos .lancado .origem{color:var(--l2);border-color:var(--l2)}
+#ativos .observado .origem{color:var(--l1);border-color:var(--l1)}
 
 #tela-metricas{display:flex;flex-direction:column;gap:10px}
 #grafo{border:1px solid var(--borda);border-radius:4px;background:var(--fundo)}
@@ -125,3 +130,8 @@ padding:4px 10px;font:inherit;font-size:11px;cursor:pointer}
 .dia .linha{display:flex;gap:8px;font-size:11px;color:var(--fraco);padding:2px 0}
 .dia .entregue{color:var(--ok)}
 .dia .reprovou{color:var(--erro)}
+
+#projeto{background:var(--painel);color:var(--texto);border:1px solid var(--borda);
+border-radius:4px;padding:3px 8px;font:inherit;font-size:12px;max-width:280px}
+#projeto:hover{border-color:var(--l1)}
+#projeto:empty{display:none}

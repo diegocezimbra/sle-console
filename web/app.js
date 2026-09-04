@@ -3,6 +3,11 @@ const CORES = { L1: '#4aa3df', L2: '#c08b3e', L3: '#7b5ec7' }
 const COLUNAS = ['backlog', 'refinamento', 'aprovado', 'doing', 'review', 'done', 'recurring']
 const eventos = []
 let indice = { board: {}, cards: [] }
+// Projeto observado. Vai em toda chamada de leitura, para a tela nunca mostrar
+// o board de um projeto com o git de outro.
+let projetoAtual = null
+const comProjeto = (rota) =>
+  projetoAtual ? `${rota}${rota.includes('?') ? '&' : '?'}projeto=${encodeURIComponent(projetoAtual)}` : rota
 
 const $ = (id) => document.getElementById(id)
 
@@ -22,7 +27,8 @@ for (const b of document.querySelectorAll('nav button')) {
 }
 
 try {
-  const s = await (await fetch('/api/snapshot')).json()
+  await montarSeletorDeProjetos()
+  const s = await (await fetch(comProjeto('/api/snapshot'))).json()
   eventos.push(...s.fluxo)
   indice = { board: s.board ?? {}, cards: s.cards ?? [] }
   pintarSessoes(s.sessoes)
@@ -57,16 +63,44 @@ stream.onmessage = async (m) => {
   if (eventos.length > 300) eventos.shift()
   pintarFluxo()
   pintarRegua()
-  const s = await (await fetch('/api/snapshot')).json()
+  const s = await (await fetch(comProjeto('/api/snapshot'))).json()
   pintarSessoes(s.sessoes)
   pintarContadores(s.contadores)
   pintarGit(s.git)
 }
 
 async function recarregarIndice() {
-  indice = await (await fetch('/api/cards')).json()
+  indice = await (await fetch(comProjeto('/api/cards'))).json()
   pintarBoard()
-  pintarGit(await (await fetch('/api/git/tree')).json())
+  pintarGit(await (await fetch(comProjeto('/api/git/tree'))).json())
+}
+
+async function montarSeletorDeProjetos() {
+  const { projetos, atual, todos } = await (await fetch('/api/projetos')).json()
+  const sel = $('projeto')
+  if (!projetos?.length) return
+  // Com dezenas de repositórios, "um por vez" esconde onde está o trabalho.
+  projetoAtual = todos ?? atual
+  const opcaoTodos = document.createElement('option')
+  opcaoTodos.value = todos
+  opcaoTodos.textContent = `todos os projetos (${projetos.length})`
+  opcaoTodos.selected = true
+  sel.replaceChildren(
+    opcaoTodos,
+    ...projetos.map((p) => {
+      const o = document.createElement('option')
+      o.value = p.caminho
+      o.textContent = p.rotulo
+      o.selected = false
+      return o
+    })
+  )
+  sel.addEventListener('change', async () => {
+    projetoAtual = sel.value
+    await recarregarIndice()
+    if (!$('tela-editar').hidden) pintarArquivos()
+    if (!$('tela-controle').hidden) pintarControle()
+  })
 }
 
 function pintarContadores(c) {
@@ -74,6 +108,14 @@ function pintarContadores(c) {
 }
 
 function pintarGit(g) {
+  // Não existe "a branch" de 75 repositórios: existe quantos estão sujos.
+  if (g?.repos != null) {
+    $('git').textContent = `${g.repos} repos · ${g.sujos} com alteração`
+    $('git').title = (g.detalhe ?? [])
+      .map((d) => `${d.projeto}: ${d.alteracoes} alterado(s)`)
+      .join('\n')
+    return
+  }
   if (!g?.branch) return ($('git').textContent = 'sem git')
   const sujo = g.sujo ? ` · ${g.alteracoes.length} alterado(s)` : ' · limpo'
   $('git').textContent = `${g.branch} ${g.head}${sujo}`
@@ -86,12 +128,20 @@ function pintarSessoes(sessoes) {
       const li = document.createElement('li')
       if (!s.ativa) li.className = 'morta'
       li.append(
-        campo('id', s.agente ?? s.id.slice(0, 12)),
-        campo('meta', `${s.eventos} eventos · ${s.ativa ? 'ativa' : 'encerrada'}`)
+        campo('id', s.agente ?? s.projeto ?? s.id.slice(0, 8)),
+        campo('meta', `${s.eventos} eventos · ${s.ativa ? `há ${idade(s.inativoMs)}` : 'inativa'}`)
       )
       return li
     })
   )
+}
+
+/** "3s", "4min", "2h" -- tempo desde o ultimo sinal. */
+function idade(ms) {
+  const s = Math.round((ms ?? 0) / 1000)
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.round(s / 60)}min`
+  return `${Math.round(s / 3600)}h`
 }
 
 function pintarFluxo() {
@@ -134,7 +184,9 @@ function botaoDeCard(c) {
   const b = document.createElement('button')
   b.className = `card risco-${c.risk ?? 'baixo'}`
   b.dataset.card = c.id
-  b.append(campo('cid', c.id), campo('titulo', c.title ?? ''))
+  // Na visão de todos, o card diz de que projeto veio.
+  b.append(campo('cid', c.rotuloProjeto ? `${c.rotuloProjeto} · ${c.id}` : c.id),
+           campo('titulo', c.title ?? ''))
   b.addEventListener('click', () => abrirCard(c.id))
 
   // Mover é uma ação do board: ir buscar o arquivo no editor para trocar uma
@@ -185,8 +237,15 @@ function abrirCard(id) {
 // ── Edição ────────────────────────────────────────────────────────────────
 let arquivoAberto = null
 
+const ehTodos = () => projetoAtual === '*'
+
 async function pintarArquivos() {
-  const { cards } = await (await fetch('/api/cards')).json()
+  if (ehTodos()) {
+    $('arquivos').replaceChildren(campoLi('escolha um projeto no seletor para editar'))
+    $('editor').value = ''
+    return
+  }
+  const { cards } = await (await fetch(comProjeto('/api/cards'))).json()
   const editaveis = [
     ...(await listar('sle/gates')),
     ...(await listar('sle/prompts')),
@@ -209,13 +268,13 @@ async function pintarArquivos() {
 const caminhoRelativo = (abs) => (abs ?? '').split(/cards[/\\]/).slice(1).join('cards/') ? 'cards/' + abs.split(/cards[/\\]/)[1] : abs
 
 async function listar(pasta) {
-  const r = await fetch(`/api/dir?path=${encodeURIComponent(pasta)}`)
+  const r = await fetch(comProjeto(`/api/dir?path=${encodeURIComponent(pasta)}`))
   const j = await r.json()
   return j.arquivos ?? []
 }
 
 async function abrirArquivo(caminho) {
-  const j = await (await fetch(`/api/file?path=${encodeURIComponent(caminho)}`)).json()
+  const j = await (await fetch(comProjeto(`/api/file?path=${encodeURIComponent(caminho)}`))).json()
   if (j.erro) return avisar(j.erro, true)
   arquivoAberto = caminho
   $('editor').value = j.conteudo
@@ -228,7 +287,7 @@ async function abrirArquivo(caminho) {
 
 $('salvar').addEventListener('click', async () => {
   if (!arquivoAberto) return avisar('nenhum arquivo aberto', true)
-  const r = await fetch(`/api/file?path=${encodeURIComponent(arquivoAberto)}`, {
+  const r = await fetch(comProjeto(`/api/file?path=${encodeURIComponent(arquivoAberto)}`), {
     method: 'PUT',
     body: $('editor').value,
   })
@@ -252,7 +311,12 @@ function avisar(texto, erro = false) {
 
 // ── Controle ──────────────────────────────────────────────────────────────
 async function pintarControle() {
-  const { agentes, ativos, gasto } = await (await fetch('/api/agents')).json()
+  if (ehTodos()) {
+    $('agentes').replaceChildren(campoLi('escolha um projeto no seletor para ver os agentes dele'))
+    $('ativos').replaceChildren(campoLi('—'))
+    return
+  }
+  const { agentes, ativos, sessoes, gasto } = await (await fetch(comProjeto('/api/agents'))).json()
   $('gasto').textContent = `${(gasto ?? 0).toFixed(2)} USD hoje`
 
   // Regra de ouro: o revisor adversarial nunca deve rodar no mesmo modelo do
@@ -284,16 +348,23 @@ async function pintarControle() {
     })
   )
 
+  // Duas origens, uma lista: o que o console lançou e o que ele observa.
+  const linhas = [
+    ...ativos.map((p) => item('lancado', `${p.agente} · pid ${p.pid} · desde ${p.inicio.slice(11, 19)}`)),
+    ...(sessoes ?? []).map((s) =>
+      item('observado', `${s.projeto ?? s.id.slice(0, 8)} · ${s.eventos} eventos · há ${idade(s.inativoMs)}`)
+    ),
+  ]
   $('ativos').replaceChildren(
-    ...(ativos.length
-      ? ativos.map((p) => {
-          const li = document.createElement('li')
-          li.className = 'processo'
-          li.textContent = `${p.agente} · pid ${p.pid} · desde ${p.inicio.slice(11, 19)}`
-          return li
-        })
-      : [campoLi('nenhum agente rodando')])
+    ...(linhas.length ? linhas : [campoLi('nenhum agente rodando nem sessão observada')])
   )
+}
+
+function item(origem, texto) {
+  const li = document.createElement('li')
+  li.className = `processo ${origem}`
+  li.append(campo('origem', origem === 'lancado' ? 'lançado' : 'observado'), campo('txt', texto))
+  return li
 }
 
 function campoLi(texto) {

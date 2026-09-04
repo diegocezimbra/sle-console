@@ -11,10 +11,13 @@ import { join } from 'node:path'
 export class Estado {
   #janela
 
-  constructor(dir, { janela = 200 } = {}) {
+  #ttlMs
+
+  constructor(dir, { janela = 200, ttlMs = 15 * 60000 } = {}) {
     mkdirSync(dir, { recursive: true })
     this.arquivo = join(dir, 'events.jsonl')
     this.#janela = janela
+    this.#ttlMs = ttlMs
     this.sessoes = new Map()
     this.fluxo = []
     this.grafo = []
@@ -48,8 +51,18 @@ export class Estado {
   }
 
   snapshot() {
+    const agora = Date.now()
     return {
-      sessoes: [...this.sessoes.values()],
+      // Sessao viva e a que deu sinal ha pouco. Quase nenhuma manda
+      // `SessionEnd`, entao esperar por ele enche o painel de fantasmas e
+      // esconde quem esta trabalhando de verdade.
+      sessoes: [...this.sessoes.values()]
+        .map((s) => ({
+          ...s,
+          ativa: s.ativa && agora - Date.parse(s.ultimo) < this.#ttlMs,
+          inativoMs: agora - Date.parse(s.ultimo),
+        }))
+        .sort((a, b) => b.ultimo.localeCompare(a.ultimo)),
       fluxo: this.fluxo,
       grafo: this.grafo,
       contadores: this.contadores,
@@ -72,8 +85,12 @@ export class Estado {
     if (!e.session) return
 
     const s = this.sessoes.get(e.session) ?? {
-      id: e.session, agente: e.agent, ativa: true, eventos: 0, inicio: e.ts, ultimo: e.ts,
+      id: e.session, agente: e.agent, projeto: null, ativa: true, eventos: 0,
+      inicio: e.ts, ultimo: e.ts,
     }
+    // UUID nao diz nada; o nome do projeto diz tudo.
+    const cwd = e.payload?.cwd
+    if (cwd) s.projeto = String(cwd).split(/[/\\]/).filter(Boolean).pop() ?? null
     s.eventos++
     s.ultimo = e.ts
     if (e.agent) s.agente = e.agent

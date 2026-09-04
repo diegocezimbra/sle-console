@@ -34,6 +34,32 @@ test('o snapshot conhece as sessoes vivas e o que cada uma fez', () => {
   assert.equal(s.sessoes[0].ativa, true)
 })
 
+test('sessao sem evento ha muito tempo deixa de ser ativa, mesmo sem SessionEnd', () => {
+  const e = new Estado(dir(), { ttlMs: 60000 })
+  const antiga = new Date(Date.now() - 5 * 60000).toISOString()
+  e.registrar(ev({ session: 'fantasma', ts: antiga }))
+  e.registrar(ev({ session: 'viva' }))
+
+  const s = e.snapshot()
+  const porId = Object.fromEntries(s.sessoes.map((x) => [x.id, x.ativa]))
+  assert.equal(porId.fantasma, false, 'a maioria das sessoes nunca manda SessionEnd')
+  assert.equal(porId.viva, true)
+})
+
+test('as sessoes vem da mais recente para a mais antiga', () => {
+  const e = new Estado(dir())
+  e.registrar(ev({ session: 'antiga', ts: new Date(Date.now() - 60000).toISOString() }))
+  e.registrar(ev({ session: 'nova' }))
+  assert.deepEqual(e.snapshot().sessoes.map((s) => s.id), ['nova', 'antiga'])
+})
+
+test('a sessao ganha o nome do projeto em que trabalha, e nao so o uuid', () => {
+  const e = new Estado(dir())
+  e.registrar(ev({ session: 'abc-123', kind: 'session.start',
+    payload: { cwd: '/home/dev/projetos/13-chatomnichannel' } }))
+  assert.equal(e.snapshot().sessoes[0].projeto, '13-chatomnichannel')
+})
+
 test('SessionEnd apaga o agente no painel', () => {
   const e = new Estado(dir())
   e.registrar(ev({ kind: 'session.start' }))

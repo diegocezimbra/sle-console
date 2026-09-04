@@ -22,6 +22,8 @@ import { calcularMetricas } from './metricas.js'
 import { montarHistorico } from './historico.js'
 import { extrairMedidas } from './otel.js'
 import { COLUNAS, lerCard } from './cards.js'
+import { descobrirProjetos, resolverProjeto } from './projetos.js'
+import { gitDeTodos, indexarTodos, TODOS } from './agregado.js'
 
 const WEB = join(dirname(fileURLToPath(import.meta.url)), '..', 'web')
 
@@ -32,7 +34,11 @@ const ESTATICOS = {
   '/style.css': ['style.css', 'text/css; charset=utf-8'],
 }
 
-export function criarDaemon({ dados, projeto = process.cwd(), tetoDiarioUsd = Infinity }) {
+/**
+ * `raiz` e a arvore que contem varios projetos; `projeto` e o padrao.
+ * Toda rota de leitura aceita `?projeto=`, validado contra a arvore.
+ */
+export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoDiarioUsd = Infinity }) {
   const estado = new Estado(dados)
   const runner = new Runner(projeto, { tetoDiarioUsd })
   const ouvintes = new Set()
@@ -54,15 +60,53 @@ export function criarDaemon({ dados, projeto = process.cwd(), tetoDiarioUsd = In
 
   const servidor = createServer((req, res) => {
     const rota = req.url?.split('?')[0] ?? '/'
+    // Projeto por requisicao: a tela troca de projeto sem reiniciar o daemon.
+    const pedido = new URL(req.url, 'http://x').searchParams.get('projeto')
+    // `*` é a visão de todos: não resolve para um caminho.
+    const todos = pedido === TODOS && raiz != null
+    const alvo = todos ? null : raiz ? resolverProjeto(raiz, pedido ?? projeto) : projeto
+    const indice = () => (todos ? indexarTodos(raiz) : indexarCards(alvo))
+    // Ler cards e git funciona agregado; abrir arquivo, rodar agente ou pedir
+    // diff exige saber QUAL projeto. Sem isso o daemon receberia `null` e
+    // morreria -- e daemon que cai leva a tela junto.
+    const exigeProjeto = () => {
+      if (!todos) return false
+      res.writeHead(409, { 'content-type': 'application/json; charset=utf-8' })
+      res.end(JSON.stringify({ erro: 'escolha um projeto no seletor para esta ação' }))
+      return true
+    }
+    const git = () => (todos ? gitDeTodos(raiz) : estadoDoGit(alvo))
+
+    if (rota === '/api/projetos') {
+      return json(res, {
+        raiz,
+        atual: todos ? TODOS : alvo,
+        todos: TODOS,
+        projetos: raiz ? descobrirProjetos(raiz) : [],
+      })
+    }
 
     if (req.method === 'POST' && rota === '/api/hook') return ingerir(req, res)
-    if (req.method === 'PUT' && rota === '/api/file') return gravar(req, res)
+    if (req.method === 'PUT' && rota === '/api/file') {
+      // Escrever exige saber em qual projeto: a visão de todos é só leitura.
+      if (exigeProjeto()) return
+      return gravar(req, res)
+    }
     if (req.method === 'POST' && rota === '/api/gates/test') return verificar(req, res)
     if (req.method === 'POST' && rota === '/api/emergency-stop') {
       return runner.pararTudo().then((mortos) => json(res, { mortos }))
     }
     if (rota === '/api/agents' && req.method === 'GET') {
-      return json(res, { agentes: runner.agentes(), ativos: runner.ativos(), gasto: runner.gasto() })
+      if (exigeProjeto()) return
+      // `ativos` sao processos que o console lancou; `sessoes` sao as que ele
+      // observa. Mostrar so os primeiros faz a tela dizer "nenhum agente
+      // rodando" enquanto cinco sessoes trabalham.
+      return json(res, {
+        agentes: runner.agentes(alvo),
+        ativos: runner.ativos(),
+        sessoes: estado.snapshot().sessoes.filter((x) => x.ativa),
+        gasto: runner.gasto(),
+      })
     }
     if (req.method === 'POST' && /^\/api\/agents\/[^/]+\/run$/.test(rota)) {
       const id = decodeURIComponent(rota.split('/')[3])
@@ -109,19 +153,21 @@ export function criarDaemon({ dados, projeto = process.cwd(), tetoDiarioUsd = In
       })
     }
     if (req.method === 'GET' && rota === '/api/dir') {
+      if (exigeProjeto()) return
       const pasta = new URL(req.url, 'http://x').searchParams.get('path') ?? ''
-      const contido = conter(projeto, join(pasta, 'x'))
+      const contido = conter(alvo, join(pasta, 'x'))
       if (!contido.ok) return json(res, { erro: contido.erro, arquivos: [] })
       try {
-        const nomes = readdirSync(join(projeto, pasta)).filter((n) => !n.startsWith('.'))
+        const nomes = readdirSync(join(alvo, pasta)).filter((n) => !n.startsWith('.'))
         return json(res, { arquivos: nomes.map((n) => `${pasta}/${n}`) })
       } catch {
         return json(res, { arquivos: [] })
       }
     }
     if (req.method === 'GET' && rota === '/api/file') {
+      if (exigeProjeto()) return
       const caminho = new URL(req.url, 'http://x').searchParams.get('path') ?? ''
-      const contido = conter(projeto, caminho)
+      const contido = conter(alvo, caminho)
       if (!contido.ok) return json(res, { erro: contido.erro })
       try {
         return json(res, { caminho, conteudo: readFileSync(contido.absoluto, 'utf8') })
@@ -130,28 +176,29 @@ export function criarDaemon({ dados, projeto = process.cwd(), tetoDiarioUsd = In
       }
     }
     if (rota === '/api/snapshot') {
-      const indice = indexarCards(projeto)
+      const i = indice()
       return json(res, {
         ...estado.snapshot(),
-        cards: indice.cards,
-        board: indice.board,
-        divergencias: indice.divergencias,
-        git: estadoDoGit(projeto),
+        cards: i.cards,
+        board: i.board,
+        divergencias: i.divergencias,
+        git: git(),
       })
     }
-    if (rota === '/api/cards') return json(res, indexarCards(projeto))
+    if (rota === '/api/cards') return json(res, indice())
     if (rota.startsWith('/api/cards/')) {
       const id = decodeURIComponent(rota.slice('/api/cards/'.length))
-      const achado = indexarCards(projeto).cards.find((c) => c.id === id)
+      const achado = indice().cards.find((c) => c.id === id)
       return achado ? json(res, achado) : fim(res, 404)
     }
-    if (rota === '/api/git/tree') return json(res, estadoDoGit(projeto))
-    if (rota === '/api/git/log') return json(res, historico(projeto))
+    if (rota === '/api/git/tree') return json(res, git())
+    if (rota === '/api/git/log') return exigeProjeto() ? undefined : json(res, historico(alvo))
     if (rota === '/api/git/diff') {
+      if (exigeProjeto()) return
       const arquivo = new URL(req.url, 'http://x').searchParams.get('file') ?? ''
-      return json(res, { arquivo, diff: diffDoArquivo(projeto, arquivo) })
+      return json(res, { arquivo, diff: diffDoArquivo(alvo, arquivo) })
     }
-    if (rota === '/api/prs') return json(res, prsAbertos(projeto))
+    if (rota === '/api/prs') return exigeProjeto() ? undefined : json(res, prsAbertos(alvo))
     if (rota === '/api/stream') return abrirStream(res)
 
     const estatico = ESTATICOS[rota]

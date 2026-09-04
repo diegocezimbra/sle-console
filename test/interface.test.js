@@ -57,7 +57,10 @@ test('falha de ferramenta aparece marcada, e nao igual ao sucesso', { skip: pula
 test('o painel de agentes mostra a sessao viva', { skip: pular }, async () => {
   const texto = await browser.avaliar(`document.getElementById('sessoes').textContent`)
   assert.match(texto, /implementer/)
-  assert.match(texto, /ativa/)
+  // "há 3s" diz mais que "ativa": a idade do último sinal é o que separa quem
+  // está trabalhando de quem só não mandou SessionEnd.
+  assert.match(texto, /há \d+s/)
+  assert.doesNotMatch(texto, /inativa/)
 })
 
 test('a regua desenha de verdade, e nao fica em branco', { skip: pular }, async () => {

@@ -35,8 +35,8 @@ export class Runner {
     this.#tetoDiarioUsd = tetoDiarioUsd
   }
 
-  agentes() {
-    const dir = join(this.#projeto, 'sle', 'agents')
+  agentes(projeto = this.#projeto) {
+    const dir = join(projeto, 'sle', 'agents')
     try {
       return readdirSync(dir)
         .filter((n) => n.endsWith('.json'))
