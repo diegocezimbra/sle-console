@@ -8,10 +8,11 @@ import { createServer } from 'node:http'
 import { spawn, spawnSync } from 'node:child_process'
 import { readdirSync, readFileSync, renameSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 
 import { Estado } from './estado.js'
 import { createAuthMiddleware } from './auth.js'
+import { startPullLoop, commitAndPush } from './gitSync.js'
 import { normalizar } from './ingest.js'
 import { indexarCards } from './cards.js'
 import { diffDoArquivo, estadoDoGit, historico, prsAbertos } from './repo.js'
@@ -46,11 +47,49 @@ const ESTATICOS = {
  * `raiz` e a arvore que contem varios projetos; `projeto` e o padrao.
  * Toda rota de leitura aceita `?projeto=`, validado contra a arvore.
  */
-export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoDiarioUsd = Infinity }) {
+export function criarDaemon({
+  dados,
+  projeto = process.cwd(),
+  raiz = null,
+  tetoDiarioUsd = Infinity,
+  git = null, // { dataDir, keyPath, intervalMs? } quando CONSOLE_MODE=git; `projeto` já é o clone.
+}) {
   const estado = new Estado(dados)
   const runner = new Runner(projeto, { tetoDiarioUsd })
   const ouvintes = new Set()
   const autorizar = createAuthMiddleware()
+  const pullLoop = git
+    ? startPullLoop({
+        dataDir: git.dataDir,
+        keyPath: git.keyPath,
+        intervalMs: git.intervalMs ?? 60_000,
+        onResult: (r) => {
+          invalidarCache()
+          invalidarCacheGit()
+          if (!r.ok) {
+            registrar({ kind: 'git.pull.falhou', loop: 'L3', card: null, session: null, payload: { erro: r.stderr } })
+          }
+        },
+      })
+    : null
+
+  /** Commita e empurra tudo que mudou em `cards/` no clone -- no-op fora do
+   *  modo git. `-A` na raiz de `cards/` (ver gitSync.js) cobre tanto edição
+   *  quanto mover o arquivo entre pastas de coluna (some de um lado, aparece
+   *  no outro) num commit só. */
+  function commitCardNoGit(mensagem) {
+    if (!git) return { ok: true }
+    const resultado = commitAndPush({
+      dataDir: git.dataDir,
+      keyPath: git.keyPath,
+      paths: [relative(git.dataDir, join(projeto, 'cards'))],
+      message: mensagem,
+    })
+    if (!resultado.ok) {
+      registrar({ kind: 'git.push.falhou', loop: 'L3', card: null, session: null, payload: { erro: resultado.stderr } })
+    }
+    return resultado
+  }
 
   // O disco e a verdade: quando ele muda, a tela sabe. Sem polling.
   const observador = observarArvore(projeto)
@@ -72,8 +111,11 @@ export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoD
   })
 
   const servidor = createServer((req, res) => {
-    if (!autorizar(req, res)) return
     const rota = req.url?.split('?')[0] ?? '/'
+    // Liveness do container: sem credencial, pra não travar o HEALTHCHECK do
+    // Docker/Coolify quando CONSOLE_USER/CONSOLE_PASSWORD estão setados.
+    if (rota === '/api/health') return json(res, { ok: true })
+    if (!autorizar(req, res)) return
     // Projeto por requisicao: a tela troca de projeto sem reiniciar o daemon.
     const pedido = new URL(req.url, 'http://x').searchParams.get('projeto')
     // `*` é a visão de todos: não resolve para um caminho.
@@ -276,7 +318,20 @@ export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoD
     })
   }
 
-  /** Move o arquivo e alinha o `status` -- pasta e frontmatter nunca divergem. */
+  /** Move o arquivo pra pasta da coluna `para` e alinha o `status` no
+   *  frontmatter -- pasta e frontmatter nunca divergem. Sem `deus task
+   *  move` (não existe fora da máquina do DEUS): é o mesmo passo usado
+   *  localmente e no modo git. Devolve o caminho absoluto do destino. */
+  function moverArquivoDoCard(card, para) {
+    const destinoDir = join(projeto, 'cards', para)
+    const destino = join(destinoDir, card.arquivo.split(/[/\\]/).pop())
+    const texto = readFileSync(card.arquivo, 'utf8').replace(/^status:.*$/m, `status: ${para}`)
+    mkdirSync(destinoDir, { recursive: true })
+    writeFileSync(card.arquivo, texto)
+    renameSync(card.arquivo, destino)
+    return destino
+  }
+
   function moverCard(id, corpo, res) {
     let para
     try {
@@ -291,13 +346,9 @@ export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoD
     const card = indexarCards(projeto).cards.find((c) => c.id === id)
     if (!card) return fim(res, 404)
 
-    const destinoDir = join(projeto, 'cards', para)
-    const destino = join(destinoDir, card.arquivo.split(/[/\\]/).pop())
     try {
-      const texto = readFileSync(card.arquivo, 'utf8').replace(/^status:.*$/m, `status: ${para}`)
-      mkdirSync(destinoDir, { recursive: true })
-      writeFileSync(card.arquivo, texto)
-      renameSync(card.arquivo, destino)
+      moverArquivoDoCard(card, para)
+      commitCardNoGit(`mover CARD-${id}: ${para}`)
     } catch (e) {
       res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' })
       return res.end(JSON.stringify({ erro: e.message }))
@@ -345,7 +396,12 @@ export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoD
   }
 
   function avisarTelegram(msg) {
-    spawn(join(raizDeus, 'bin', 'deus'), ['telegram', msg], { detached: true, stdio: 'ignore' }).unref()
+    // No clone da nuvem não existe `bin/deus` -- sem o listener de erro, um
+    // ENOENT assincrono derruba o processo inteiro (spawn emite 'error' fora
+    // do try/catch de quem chamou).
+    spawn(join(raizDeus, 'bin', 'deus'), ['telegram', msg], { detached: true, stdio: 'ignore' })
+      .on('error', () => {})
+      .unref()
   }
 
   function lerRespostaDoCorpo(corpo) {
@@ -374,6 +430,7 @@ export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoD
 
     try {
       gravarSecaoResposta(card, opcao, texto)
+      commitCardNoGit(`resposta do Diego: ${id}`)
       avisarTelegram(`📝 Resposta do Diego em ${id}: ${opcao || '—'} — ${texto.slice(0, 200)}`)
     } catch (e) {
       res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' })
@@ -383,9 +440,11 @@ export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoD
     return json(res, { ok: true, id, option: opcao, text: texto })
   }
 
-  /** "Pendência resolvida": grava a resposta se veio algo, move o card para
-   *  `aprovado` pelo próprio `deus task move` (mantém nota e evento do DEUS)
-   *  e avisa. Só faz sentido a partir de `pendente-diego`. */
+  /** "Pendência resolvida": grava a resposta se veio algo e move o card para
+   *  `aprovado`. Localmente isso passa pelo `deus task move` (mantém nota e
+   *  evento do DEUS); no modo git não existe `deus` no clone -- move o
+   *  arquivo direto e escreve a nota no próprio card, depois commita+empurra.
+   *  Só faz sentido a partir de `pendente-diego`. */
   function resolverPendencia(indiceAtual, id, corpo, res, registrarEvento) {
     const { opcao, texto } = lerRespostaDoCorpo(corpo)
     const card = indiceAtual.cards.find((c) => c.id === id) ?? achadoEmTodos(id)
@@ -394,12 +453,18 @@ export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoD
       res.writeHead(422, { 'content-type': 'application/json; charset=utf-8' })
       return res.end(JSON.stringify({ erro: `card não está em pendente-diego (está em ${card.coluna})` }))
     }
+    const dataHoje = new Date().toISOString().slice(0, 10)
     try {
       if (opcao || texto) gravarSecaoResposta(card, opcao, texto)
-      const mover = spawnSync(join(raizDeus, 'bin', 'deus'), ['task', 'move', id, 'aprovado'], { encoding: 'utf8' })
-      if (mover.status !== 0) throw new Error(mover.stderr || 'falha ao mover para aprovado')
-      const dataHoje = new Date().toISOString().slice(0, 10)
-      spawnSync(join(raizDeus, 'bin', 'deus'), ['task', 'note', id, `Pendência resolvida pelo Diego (${dataHoje})`])
+      if (git) {
+        const destino = moverArquivoDoCard(card, 'aprovado')
+        appendFileSync(destino, `\n## Nota\nPendência resolvida pelo Diego (${dataHoje})\n`)
+        commitCardNoGit(`resposta do Diego: ${id}`)
+      } else {
+        const mover = spawnSync(join(raizDeus, 'bin', 'deus'), ['task', 'move', id, 'aprovado'], { encoding: 'utf8' })
+        if (mover.status !== 0) throw new Error(mover.stderr || 'falha ao mover para aprovado')
+        spawnSync(join(raizDeus, 'bin', 'deus'), ['task', 'note', id, `Pendência resolvida pelo Diego (${dataHoje})`])
+      }
       avisarTelegram(`✔ Pendência resolvida em ${id}: ${opcao || '—'} — ${texto.slice(0, 200)}`)
     } catch (e) {
       res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' })
@@ -510,7 +575,7 @@ export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoD
     return null
   }
 
-  return { servidor, estado, observador, runner, otlp }
+  return { servidor, estado, observador, runner, otlp, pararGit: () => pullLoop?.stop() }
 }
 
 const json = (res, dados) => {

@@ -83,7 +83,10 @@ export function startPullLoop({ dataDir, keyPath, intervalMs = 60_000, onResult 
  */
 export function commitAndPush({ dataDir, keyPath, paths, message }) {
   const env = sshEnv(keyPath)
-  const add = run(['add', ...paths], { cwd: dataDir })
+  // `-A` (not a plain `add <path>`) so a card MOVED between column folders
+  // stages both the deletion at the old path and the creation at the new
+  // one -- without it, a rename leaves the old path dangling in the index.
+  const add = run(['add', '-A', '--', ...paths], { cwd: dataDir })
   if (!add.ok) return add
 
   const commit = run(['commit', '-m', message], { cwd: dataDir })
