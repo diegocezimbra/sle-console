@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url'
 
 import { criarDaemon } from '../src/daemon.js'
 import { lerConfig } from '../src/config.js'
-import { writeDeployKey, ensureCloned } from '../src/gitSync.js'
+import { writeDeployKey, ensureCloned, ensureIdentidade } from '../src/gitSync.js'
 
 const AQUI = dirname(fileURLToPath(import.meta.url))
 const INSTALACAO = process.env.SLE_INSTALACAO ?? join(AQUI, '..', '..')
@@ -36,6 +36,11 @@ function prepararModoGit() {
   writeDeployKey(keyPath, deployKey)
   const clone = ensureCloned({ repoUrl, dataDir, keyPath, branch })
   if (!clone.ok) throw new Error(`git clone de ${repoUrl} falhou: ${clone.stderr}`)
+  // Sem isso, `git commit` falha com "Please tell me who you are" -- foi a
+  // causa real do push calado em produção (commit nunca acontecia, push
+  // não tinha o que empurrar, e o container ficava com respostas do Diego
+  // só staged, presas no clone).
+  ensureIdentidade({ dataDir })
   return { dataDir, keyPath, intervalMs }
 }
 

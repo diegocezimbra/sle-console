@@ -63,6 +63,17 @@ export function criarDaemon({
         dataDir: git.dataDir,
         keyPath: git.keyPath,
         intervalMs: git.intervalMs ?? 60_000,
+        onPushResult: (r) => {
+          if (!r.ok) {
+            registrar({
+              kind: 'git.push.falhou',
+              loop: 'L3',
+              card: null,
+              session: null,
+              payload: { erro: r.stderr, conflito: r.conflito ?? false },
+            })
+          }
+        },
         onResult: (r) => {
           invalidarCache()
           invalidarCacheGit()
@@ -346,15 +357,18 @@ export function criarDaemon({
     const card = indexarCards(projeto).cards.find((c) => c.id === id)
     if (!card) return fim(res, 404)
 
+    let sincronizado
     try {
       moverArquivoDoCard(card, para)
-      commitCardNoGit(`mover CARD-${id}: ${para}`)
+      sincronizado = commitCardNoGit(`mover CARD-${id}: ${para}`)
     } catch (e) {
       res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' })
       return res.end(JSON.stringify({ erro: e.message }))
     }
     registrar({ kind: 'card.move', loop: 'L3', card: id, session: null, payload: { para } })
-    return json(res, { ok: true, id, para })
+    const resposta = { ok: true, id, para }
+    if (sincronizado && !sincronizado.ok) resposta.sync = 'pendente'
+    return json(res, resposta)
   }
 
   /** Busca de última instância: varre todos os projetos, não só o escolhido no seletor. */
@@ -477,10 +491,11 @@ export function criarDaemon({
     if (!card) return fim(res, 404)
 
     let linha
+    let sincronizado
     try {
       const gravado = gravarSecaoResposta(card, opcao, texto)
       linha = gravado.linha
-      commitCardNoGit(`resposta do Diego: ${id}`, gravado.caminhosExtras)
+      sincronizado = commitCardNoGit(`resposta do Diego: ${id}`, gravado.caminhosExtras)
     } catch (e) {
       res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' })
       return res.end(JSON.stringify({ erro: e.message }))
@@ -488,7 +503,13 @@ export function criarDaemon({
     gravarEstadoBestEffort(linha)
     avisarTelegram(`📝 Resposta do Diego em ${id}: ${opcao || '—'} — ${texto.slice(0, 200)}`)
     registrarEvento({ kind: 'card.resposta', loop: 'L3', card: id, session: null, payload: { option: opcao } })
-    return json(res, { ok: true, id, option: opcao, text: texto })
+    // A resposta já foi gravada e commitada localmente mesmo que o push
+    // tenha falhado (deploy key sem escrita, GitHub fora do ar) -- nunca
+    // fingir sucesso: o chamador sabe pelo `sync: "pendente"` que o commit
+    // ainda não chegou ao remoto; `pushPendente` reteta no próximo pull.
+    const resposta = { ok: true, id, option: opcao, text: texto }
+    if (sincronizado && !sincronizado.ok) resposta.sync = 'pendente'
+    return json(res, resposta)
   }
 
   /** "Pendência resolvida": grava a resposta se veio algo e move o card para
@@ -506,6 +527,7 @@ export function criarDaemon({
     }
     const dataHoje = new Date().toISOString().slice(0, 10)
     let linha = null
+    let sincronizado
     try {
       let caminhosExtras = []
       if (opcao || texto) {
@@ -516,7 +538,7 @@ export function criarDaemon({
       if (git) {
         const destino = moverArquivoDoCard(card, 'aprovado')
         appendFileSync(destino, `\n## Nota\nPendência resolvida pelo Diego (${dataHoje})\n`)
-        commitCardNoGit(`resposta do Diego: ${id}`, caminhosExtras)
+        sincronizado = commitCardNoGit(`resposta do Diego: ${id}`, caminhosExtras)
       } else {
         const mover = spawnSync(join(raizDeus, 'bin', 'deus'), ['task', 'move', id, 'aprovado'], { encoding: 'utf8' })
         if (mover.status !== 0) throw new Error(mover.stderr || 'falha ao mover para aprovado')
@@ -529,7 +551,9 @@ export function criarDaemon({
     if (linha) gravarEstadoBestEffort(linha)
     avisarTelegram(`✔ Pendência resolvida em ${id}: ${opcao || '—'} — ${texto.slice(0, 200)}`)
     registrarEvento({ kind: 'card.resolvido', loop: 'L3', card: id, session: null, payload: { option: opcao } })
-    return json(res, { ok: true, id, coluna: 'aprovado' })
+    const resposta = { ok: true, id, coluna: 'aprovado' }
+    if (sincronizado && !sincronizado.ok) resposta.sync = 'pendente'
+    return json(res, resposta)
   }
 
   function registrar(parcial) {
