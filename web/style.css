@@ -58,26 +58,67 @@ color:var(--fundo);background:var(--l2)}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;
 justify-content:center;z-index:50}
 .modal-overlay[hidden]{display:none}
-.modal-caixa{background:var(--painel);border:1px solid var(--borda);border-radius:6px;max-width:640px;
-width:90%;max-height:85vh;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:10px;
-font-family:-apple-system,'Segoe UI',Roboto,Inter,sans-serif}
-.modal-topo h3{font-family:inherit}
-.modal-topo{display:flex;justify-content:space-between;align-items:center;gap:10px}
-.modal-topo h3{margin:0;font-size:15px}
-.modal-acoes{display:flex;gap:10px;align-items:center;font-size:12px}
-.modal-acoes a{color:var(--l1)}
-.modal-acoes button{background:var(--fundo);color:var(--texto);border:1px solid var(--borda);
-border-radius:4px;cursor:pointer;padding:2px 8px}
-.modal-meta{display:flex;gap:14px;color:var(--fraco);font-size:11px;flex-wrap:wrap}
-.modal-corpo{white-space:pre-wrap;background:var(--fundo);border:1px solid var(--borda);
-border-radius:4px;padding:12px;margin:0;line-height:1.4}
-.modal-resposta{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--borda);padding-top:10px}
-.modal-resposta textarea{min-height:70px;resize:vertical;background:var(--fundo);color:var(--texto);
-border:1px solid var(--borda);border-radius:4px;padding:6px;font:inherit}
-.modal-resposta button{align-self:flex-end;background:var(--painel);color:var(--texto);
-border:1px solid var(--borda);border-radius:4px;padding:6px 12px;cursor:pointer}
-.resposta-diego{border-left:3px solid var(--l2);padding-left:8px;margin:0 0 8px;white-space:pre-wrap;font-size:13px}
+/* Cabeçalho e rodapé fixos, só o corpo rola -- por isso a caixa é um grid de
+   3 linhas (auto/1fr/auto), não uma coluna que cresce e some por baixo. */
+.modal-caixa{background:var(--painel);border:1px solid var(--borda);border-radius:10px;
+box-shadow:0 16px 48px rgba(0,0,0,.5);max-width:720px;width:92%;max-height:85vh;
+display:grid;grid-template-rows:auto auto 1fr auto;
+font:15px/1.5 -apple-system,'Segoe UI',Roboto,Inter,sans-serif;color:var(--texto)}
+.modal-topo{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;
+padding:20px 24px 0}
+.modal-linha1{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.modal-id{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;color:var(--fraco)}
+#modal-titulo{margin:0;font-size:20px;font-weight:600;line-height:1.3}
+/* Nunca quebra: cabe as duas ações numa linha só, mesmo com o texto do link. */
+.modal-acoes{display:flex;gap:8px;align-items:center;flex-shrink:0;white-space:nowrap}
+.botao-secundario{color:var(--texto);background:var(--fundo);border:1px solid var(--borda);
+border-radius:6px;padding:5px 10px;font-size:12px;text-decoration:none;white-space:nowrap}
+.botao-secundario:hover{border-color:var(--l1)}
+.botao-icone{background:var(--fundo);color:var(--texto);border:1px solid var(--borda);
+border-radius:6px;cursor:pointer;width:28px;height:28px;font-size:13px;line-height:1}
+.modal-meta{display:flex;gap:6px;color:var(--fraco);font-size:12px;flex-wrap:wrap;padding:10px 24px 16px}
+.modal-meta .chip{border:1px solid var(--borda);border-radius:999px;padding:2px 10px}
+.modal-corpo-scroll{overflow:auto;padding:0 24px;border-top:1px solid var(--borda);border-bottom:1px solid var(--borda)}
+.modal-corpo{padding:16px 0 4px;margin:0}
+.modal-corpo p{margin:0 0 8px}
+.modal-corpo h2{font-size:16px;font-weight:700;margin:16px 0 6px}
+.modal-corpo h2:first-child{margin-top:0}
+.modal-corpo h3{font-size:14px;font-weight:700;margin:14px 0 6px}
+.modal-corpo ul{list-style:disc;padding-left:20px;margin:0 0 8px}
+.modal-corpo li{margin:0 0 4px}
+.modal-corpo code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.9em;
+background:var(--fundo);border:1px solid var(--borda);border-radius:3px;padding:1px 5px}
+/* "O que decidir" precisa saltar aos olhos -- é a única pergunta que o Diego
+   veio responder, o resto do corpo é só contexto. */
+.modal-corpo .bloco-decisao{background:var(--fundo);border:1px solid var(--l2);border-radius:8px;
+padding:12px 14px;margin:12px 0}
+.modal-corpo .bloco-decisao h2{margin-top:0}
+.cartoes-opcao{display:flex;flex-direction:column;gap:6px;margin:8px 0}
+.cartao-opcao{display:block;width:100%;text-align:left;background:var(--painel);color:var(--texto);
+border:1px solid var(--borda);border-radius:6px;padding:8px 10px;font:inherit;cursor:pointer}
+.cartao-opcao:hover{border-color:var(--l1)}
+.cartao-opcao.selecionada{border-color:var(--l2);background:rgba(192,139,62,.12)}
+.modal-respostas{padding:4px 0 16px}
+.modal-respostas h3{font-size:12px;color:var(--fraco);text-transform:uppercase;letter-spacing:.06em;margin:0 0 8px}
+.resposta-diego{border-left:3px solid var(--l2);padding-left:10px;margin:0 0 10px;font-size:13px;line-height:1.5}
 .resposta-diego b{display:block;color:var(--fraco);font-weight:normal;font-size:11px;margin-bottom:2px}
+.modal-resposta{display:flex;flex-direction:column;gap:8px;padding:16px 24px 20px;background:var(--painel);
+border-radius:0 0 10px 10px}
+.modal-resposta h3{margin:0;font-size:13px;font-weight:600}
+.modal-opcoes{display:flex;flex-direction:column;gap:4px}
+.modal-opcoes label{display:flex;gap:8px;align-items:flex-start;font-size:13px;cursor:pointer}
+.modal-opcoes input{margin-top:3px}
+.modal-resposta textarea{resize:vertical;background:var(--fundo);color:var(--texto);
+border:1px solid var(--borda);border-radius:6px;padding:8px;font:inherit}
+.modal-resposta-botoes{display:flex;justify-content:flex-end;gap:8px}
+.botao-primario{background:var(--l1);color:#0b1220;border:none;font-weight:600;
+border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px}
+.botao-primario:hover{filter:brightness(1.08)}
+.botao-resolver{background:var(--ok)}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ok);
+color:#0b1220;padding:8px 18px;border-radius:999px;font:600 13px/1 -apple-system,'Segoe UI',Roboto,Inter,sans-serif;
+z-index:60;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.toast[hidden]{display:none}
 ul,ol{margin:0;padding:0;list-style:none}
 #sessoes li{padding:6px 0;border-bottom:1px solid var(--borda)}
 #sessoes .id{color:var(--texto);display:block}

@@ -5,7 +5,7 @@
  * seu ambiente de trabalho, cada dependencia e superficie de ataque.
  */
 import { createServer } from 'node:http'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { readdirSync, readFileSync, renameSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -104,6 +104,11 @@ export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoD
     if (req.method === 'POST' && /^\/api\/cards\/[^/]+\/answer$/.test(rota)) {
       const id = decodeURIComponent(rota.split('/')[3])
       return lerCorpo(req, (corpo) => registrarResposta(indice(), id, corpo, res, registrar))
+    }
+
+    if (req.method === 'POST' && /^\/api\/cards\/[^/]+\/resolve$/.test(rota)) {
+      const id = decodeURIComponent(rota.split('/')[3])
+      return lerCorpo(req, (corpo) => resolverPendencia(indice(), id, corpo, res, registrar))
     }
 
     if (rota === '/api/projetos') {
@@ -218,7 +223,11 @@ export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoD
     if (rota === '/api/cards') return json(res, indice())
     if (rota.startsWith('/api/cards/')) {
       const id = decodeURIComponent(rota.slice('/api/cards/'.length))
-      const achado = indice().cards.find((c) => c.id === id)
+      // O id do card é único no parque inteiro: se o projeto pedido (ou o
+      // default) não o contém, cai para todos os projetos antes de dar 404 --
+      // sem isso o modal trava sempre que o seletor está num projeto que não
+      // é o dono do card.
+      const achado = indice().cards.find((c) => c.id === id) ?? achadoEmTodos(id)
       return achado ? json(res, { ...achado, opcoes: [...opcoesDoCard(achado.corpo ?? ''), 'Outra'] }) : fim(res, 404)
     }
     if (rota === '/api/git/tree') return git().then((g) => json(res, g))
@@ -293,6 +302,12 @@ export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoD
     return json(res, { ok: true, id, para })
   }
 
+  /** Busca de última instância: varre todos os projetos, não só o escolhido no seletor. */
+  function achadoEmTodos(id) {
+    if (!raiz) return null
+    return indexarTodos(raiz).cards.find((c) => c.id === id) ?? null
+  }
+
   /** Só as linhas `A) …`/`B) …` da seção `## Opções` — o resto do corpo não é opção de resposta. */
   function opcoesDoCard(corpo) {
     const secao = /^## Op(?:ç|c)(?:õ|o)es\s*$([\s\S]*?)(?=^## |\s*$(?![\s\S]))/m.exec(corpo)
@@ -300,16 +315,47 @@ export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoD
     return [...secao[1].matchAll(/^([A-Z])\)\s*(.+)$/gm)].map((m) => `${m[1]}) ${m[2].trim()}`)
   }
 
-  /** Acrescenta a resposta do Diego ao card, registra em jsonl e avisa o DEUS. */
-  function registrarResposta(indiceAtual, id, corpo, res, registrarEvento) {
+  const raizDeus = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
+
+  /** Acrescenta a seção de resposta ao arquivo do card e registra em jsonl —
+   *  usado tanto por "Salvar resposta" quanto por "Pendência resolvida". */
+  function gravarSecaoResposta(card, opcao, texto) {
+    const agora = new Date()
+    const carimbo = agora.toISOString().slice(0, 16).replace('T', ' ')
+    const secao = `\n## Resposta do Diego (${carimbo})\n**Opção:** ${opcao || '—'}\n${texto}\n`
+    const texto0 = readFileSync(card.arquivo, 'utf8')
+    writeFileSync(card.arquivo, texto0 + secao)
+    const linha = JSON.stringify({
+      ts: agora.toISOString(),
+      card: card.id,
+      coluna: card.coluna,
+      option: opcao,
+      text: texto,
+      tratada: false,
+    })
+    const estadoDir = join(raizDeus, 'estado')
+    mkdirSync(estadoDir, { recursive: true })
+    appendFileSync(join(estadoDir, 'respostas-diego.jsonl'), linha + '\n')
+    writeFileSync(join(estadoDir, 'respostas-pendentes.flag'), '')
+  }
+
+  function avisarTelegram(msg) {
+    spawn(join(raizDeus, 'bin', 'deus'), ['telegram', msg], { detached: true, stdio: 'ignore' }).unref()
+  }
+
+  function lerRespostaDoCorpo(corpo) {
     let pedido = {}
     try {
       pedido = JSON.parse(corpo)
     } catch {
       pedido = {}
     }
-    const opcao = String(pedido.option ?? '').trim()
-    const texto = String(pedido.text ?? '').trim()
+    return { opcao: String(pedido.option ?? '').trim(), texto: String(pedido.text ?? '').trim() }
+  }
+
+  /** Acrescenta a resposta do Diego ao card, registra em jsonl e avisa o DEUS. */
+  function registrarResposta(indiceAtual, id, corpo, res, registrarEvento) {
+    const { opcao, texto } = lerRespostaDoCorpo(corpo)
     if (!opcao && !texto) {
       res.writeHead(422, { 'content-type': 'application/json; charset=utf-8' })
       return res.end(JSON.stringify({ erro: 'opção ou texto obrigatório' }))
@@ -318,36 +364,44 @@ export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoD
       res.writeHead(422, { 'content-type': 'application/json; charset=utf-8' })
       return res.end(JSON.stringify({ erro: 'texto acima de 4000 caracteres' }))
     }
-    const card = indiceAtual.cards.find((c) => c.id === id)
+    const card = indiceAtual.cards.find((c) => c.id === id) ?? achadoEmTodos(id)
     if (!card) return fim(res, 404)
 
-    const raizDeus = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
-    const agora = new Date()
-    const carimbo = agora.toISOString().slice(0, 16).replace('T', ' ')
-    const secao = `\n## Resposta do Diego (${carimbo})\n**Opção:** ${opcao || '—'}\n${texto}\n`
     try {
-      const texto0 = readFileSync(card.arquivo, 'utf8')
-      writeFileSync(card.arquivo, texto0 + secao)
-      const linha = JSON.stringify({
-        ts: agora.toISOString(),
-        card: id,
-        coluna: card.coluna,
-        option: opcao,
-        text: texto,
-        tratada: false,
-      })
-      const estadoDir = join(raizDeus, 'estado')
-      mkdirSync(estadoDir, { recursive: true })
-      appendFileSync(join(estadoDir, 'respostas-diego.jsonl'), linha + '\n')
-      writeFileSync(join(estadoDir, 'respostas-pendentes.flag'), '')
-      const aviso = `📝 Resposta do Diego em ${id}: ${opcao || '—'} — ${texto.slice(0, 200)}`
-      spawn(join(raizDeus, 'bin', 'deus'), ['telegram', aviso], { detached: true, stdio: 'ignore' }).unref()
+      gravarSecaoResposta(card, opcao, texto)
+      avisarTelegram(`📝 Resposta do Diego em ${id}: ${opcao || '—'} — ${texto.slice(0, 200)}`)
     } catch (e) {
       res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' })
       return res.end(JSON.stringify({ erro: e.message }))
     }
     registrarEvento({ kind: 'card.resposta', loop: 'L3', card: id, session: null, payload: { option: opcao } })
     return json(res, { ok: true, id, option: opcao, text: texto })
+  }
+
+  /** "Pendência resolvida": grava a resposta se veio algo, move o card para
+   *  `aprovado` pelo próprio `deus task move` (mantém nota e evento do DEUS)
+   *  e avisa. Só faz sentido a partir de `pendente-diego`. */
+  function resolverPendencia(indiceAtual, id, corpo, res, registrarEvento) {
+    const { opcao, texto } = lerRespostaDoCorpo(corpo)
+    const card = indiceAtual.cards.find((c) => c.id === id) ?? achadoEmTodos(id)
+    if (!card) return fim(res, 404)
+    if (card.coluna !== 'pendente-diego') {
+      res.writeHead(422, { 'content-type': 'application/json; charset=utf-8' })
+      return res.end(JSON.stringify({ erro: `card não está em pendente-diego (está em ${card.coluna})` }))
+    }
+    try {
+      if (opcao || texto) gravarSecaoResposta(card, opcao, texto)
+      const mover = spawnSync(join(raizDeus, 'bin', 'deus'), ['task', 'move', id, 'aprovado'], { encoding: 'utf8' })
+      if (mover.status !== 0) throw new Error(mover.stderr || 'falha ao mover para aprovado')
+      const dataHoje = new Date().toISOString().slice(0, 10)
+      spawnSync(join(raizDeus, 'bin', 'deus'), ['task', 'note', id, `Pendência resolvida pelo Diego (${dataHoje})`])
+      avisarTelegram(`✔ Pendência resolvida em ${id}: ${opcao || '—'} — ${texto.slice(0, 200)}`)
+    } catch (e) {
+      res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' })
+      return res.end(JSON.stringify({ erro: e.message }))
+    }
+    registrarEvento({ kind: 'card.resolvido', loop: 'L3', card: id, session: null, payload: { option: opcao } })
+    return json(res, { ok: true, id, coluna: 'aprovado' })
   }
 
   function registrar(parcial) {

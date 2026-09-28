@@ -259,36 +259,74 @@ function botaoDeCard(c) {
   return b
 }
 
+function inline(s) {
+  return s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>')
+}
+
 /** Escapa e converte um subconjunto simples de markdown -- títulos, listas,
- *  negrito e quebras -- nunca HTML cru vindo do arquivo. */
+ *  negrito, código inline. `## Opções` vira cartões clicáveis (A/B/C…), e
+ *  esses cartões mais "decidir"/"recomendação" ficam num bloco em destaque:
+ *  é a única pergunta que o Diego veio ao modal para responder. */
 function markdownSeguro(texto) {
   const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const linhas = esc(texto).split('\n')
   const html = []
   let listaAberta = false
+  let opcoesAbertas = false
+  let decisaoAberta = false
+  let emSecaoOpcoes = false
+
+  const fecharLista = () => { if (listaAberta) { html.push('</ul>'); listaAberta = false } }
+  const fecharOpcoes = () => { if (opcoesAbertas) { html.push('</div>'); opcoesAbertas = false } }
+
   for (const linha of linhas) {
     const titulo = /^(#{1,6})\s+(.*)$/.exec(linha)
-    const item = /^[-*]\s+(.*)$/.exec(linha)
-    if (item) {
-      if (!listaAberta) { html.push('<ul>'); listaAberta = true }
-      html.push(`<li>${negrito(item[1])}</li>`)
+    const itemOpcao = emSecaoOpcoes && /^([A-Z])\)\s*(.*)$/.exec(linha)
+    const item = !itemOpcao && /^[-*]\s+(.*)$/.exec(linha)
+
+    if (titulo) {
+      fecharLista()
+      fecharOpcoes()
+      const textoTitulo = titulo[2]
+      const ehDecisao = /decidir|op[cç][aã]o|op[cç][ãõo]es|recomenda/i.test(textoTitulo)
+      if (ehDecisao && !decisaoAberta) { html.push('<div class="bloco-decisao">'); decisaoAberta = true }
+      else if (!ehDecisao && decisaoAberta) { html.push('</div>'); decisaoAberta = false }
+      emSecaoOpcoes = /op[cç][ãõo]es/i.test(textoTitulo)
+      const n = Math.min(titulo[1].length + 1, 6)
+      html.push(`<h${n}>${inline(textoTitulo)}</h${n}>`)
       continue
     }
-    if (listaAberta) { html.push('</ul>'); listaAberta = false }
-    if (titulo) {
-      const n = titulo[1].length
-      html.push(`<h${n}>${negrito(titulo[2])}</h${n}>`)
-    } else if (linha.trim() === '') {
-      html.push('<br>')
-    } else {
-      html.push(`<p>${negrito(linha)}</p>`)
+    if (itemOpcao) {
+      if (!opcoesAbertas) { html.push('<div class="cartoes-opcao">'); opcoesAbertas = true }
+      const rotulo = `${itemOpcao[1]}) ${itemOpcao[2]}`
+      html.push(`<button type="button" class="cartao-opcao" data-opcao="${rotulo.replace(/"/g, '&quot;')}">${inline(rotulo)}</button>`)
+      continue
     }
+    fecharOpcoes()
+    if (item) {
+      if (!listaAberta) { html.push('<ul>'); listaAberta = true }
+      html.push(`<li>${inline(item[1])}</li>`)
+      continue
+    }
+    fecharLista()
+    if (linha.trim() === '') continue
+    html.push(`<p>${inline(linha)}</p>`)
   }
-  if (listaAberta) html.push('</ul>')
+  fecharLista()
+  fecharOpcoes()
+  if (decisaoAberta) html.push('</div>')
   return html.join('\n')
-  function negrito(s) {
-    return s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
-  }
+}
+
+/** "2026-09-28T18:00…" -> "28/09 18:00"; formato que não bate cai como veio. */
+function formatarQuandoPrazo(p) {
+  if (!p) return null
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(String(p))
+  return m ? `${m[3]}/${m[2]} ${m[4]}:${m[5]}` : String(p)
+}
+
+function chip(texto) {
+  return campo('chip', texto)
 }
 
 let cardAberto = null
@@ -296,43 +334,87 @@ let cardAberto = null
 async function abrirCard(id) {
   let c = indice.cards.find((x) => x.id === id)
   if (!c) {
-    const r = await fetch(comProjeto(`/api/cards/${encodeURIComponent(id)}`))
-    if (!r.ok) return
-    c = await r.json()
+    try {
+      const r = await fetch(comProjeto(`/api/cards/${encodeURIComponent(id)}`))
+      if (!r.ok) return erroDeCard(id)
+      c = await r.json()
+    } catch {
+      return erroDeCard(id)
+    }
   }
   cardAberto = c
+  document.querySelector('.modal-resposta').hidden = false
   history.pushState({}, '', `/card/${encodeURIComponent(id)}`)
 
-  $('modal-titulo').textContent = `${c.id} — ${c.title ?? ''}`
+  $('modal-id').textContent = c.id
+  $('modal-selo').hidden = c.coluna !== 'pendente-diego'
+  $('modal-selo').textContent = 'AGUARDA VOCÊ'
+  $('modal-titulo').textContent = c.title ?? ''
   $('modal-nova-guia').href = `/card/${encodeURIComponent(id)}`
-  $('modal-meta').replaceChildren(
-    campo('m', `coluna ${c.coluna}`),
-    campo('m', `dono ${c.owner ?? '—'}`),
-    campo('m', `prioridade ${c.prioridade ?? '—'}`),
-    campo('m', `prazo ${c.prazo ?? '—'}`),
-    campo('m', `modelo ${c.modelo ?? '—'}`)
-  )
+
+  // Só metadado preenchido vira chip -- "prioridade —" não ajuda ninguém.
+  const chips = []
+  if (c.owner) chips.push(chip(c.owner))
+  const prazo = formatarQuandoPrazo(c.prazo)
+  if (prazo) chips.push(chip(`prazo ${prazo}`))
+  if (c.prioridade) chips.push(chip(c.prioridade))
+  if (c.modelo) chips.push(chip(c.modelo))
+  $('modal-meta').replaceChildren(...chips)
+
   $('modal-corpo').innerHTML = markdownSeguro(c.corpo ?? '')
   pintarRespostas(c)
   pintarSeletorOpcoes(c)
+  $('modal-resolver').hidden = c.coluna !== 'pendente-diego'
+  $('modal-card').hidden = false
+}
+
+/** Card não achado ou rede falhou: o modal abre mesmo assim, com o ✕ vivo --
+ *  travar sem mensagem foi o bug real que o Diego reportou. */
+function erroDeCard(id) {
+  cardAberto = null
+  $('modal-id').textContent = id
+  $('modal-selo').hidden = true
+  $('modal-titulo').textContent = 'Não encontrado'
+  $('modal-nova-guia').href = `/card/${encodeURIComponent(id)}`
+  $('modal-meta').replaceChildren()
+  $('modal-corpo').innerHTML = `<p>Não achei o card <b>${id}</b> em nenhum projeto observado.</p>`
+  $('modal-respostas').replaceChildren()
+  $('modal-resposta-opcoes').replaceChildren()
+  document.querySelector('.modal-resposta').hidden = true
   $('modal-card').hidden = false
 }
 
 function fecharModal() {
+  document.querySelector('.modal-resposta').hidden = false
   $('modal-card').hidden = true
   cardAberto = null
   if (location.pathname.startsWith('/card/')) history.pushState({}, '', '/')
 }
 
 function pintarSeletorOpcoes(c) {
-  const sel = $('modal-resposta-opcao')
+  const wrap = $('modal-resposta-opcoes')
   const opcoes = c.opcoes ?? ['Outra']
-  sel.replaceChildren(...opcoes.map((o) => {
-    const op = document.createElement('option')
-    op.value = o
-    op.textContent = o
-    return op
+  wrap.replaceChildren(...opcoes.map((o) => {
+    const label = document.createElement('label')
+    const input = document.createElement('input')
+    input.type = 'radio'
+    input.name = 'resposta-opcao'
+    input.value = o
+    input.addEventListener('change', () => selecionarOpcao(o))
+    label.append(input, document.createTextNode(o))
+    return label
   }))
+}
+
+/** Cartão A/B/C do corpo e rádio do rodapé são a mesma escolha -- clicar
+ *  qualquer um dos dois marca os dois. */
+function selecionarOpcao(valor) {
+  for (const r of $('modal-resposta-opcoes').querySelectorAll('input[type=radio]')) {
+    r.checked = r.value === valor
+  }
+  for (const el of $('modal-corpo').querySelectorAll('.cartao-opcao')) {
+    el.classList.toggle('selecionada', el.dataset.opcao === valor)
+  }
 }
 
 /** Respostas já registradas no corpo, lidas de volta -- não duplica estado,
@@ -340,14 +422,26 @@ function pintarSeletorOpcoes(c) {
 function pintarRespostas(c) {
   const alvo = $('modal-respostas')
   const blocos = [...(c.corpo ?? '').matchAll(/## Resposta do Diego \(([^)]+)\)\n\*\*Opção:\*\* (.*)\n([\s\S]*?)(?=\n## |$)/g)]
-  alvo.replaceChildren(...blocos.map(([, quando, opcao, texto]) => {
+  if (!blocos.length) return alvo.replaceChildren()
+  const titulo = document.createElement('h3')
+  titulo.textContent = 'Respostas anteriores'
+  alvo.replaceChildren(titulo, ...blocos.map(([, quando, opcao, texto]) => {
     const p = document.createElement('p')
     p.className = 'resposta-diego'
     const b = document.createElement('b')
-    b.textContent = `${quando} — ${opcao}`
+    b.textContent = `${formatarQuandoPrazo(quando.replace(' ', 'T')) ?? quando} — ${opcao}`
     p.append(b, document.createTextNode(texto.trim()))
     return p
   }))
+}
+
+let toastTimer = null
+function toast(msg) {
+  const el = $('toast')
+  el.textContent = msg
+  el.hidden = false
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { el.hidden = true }, 2500)
 }
 
 $('modal-fechar').addEventListener('click', fecharModal)
@@ -357,10 +451,19 @@ $('modal-card').addEventListener('click', (ev) => {
 document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape' && !$('modal-card').hidden) fecharModal()
 })
+$('modal-corpo').addEventListener('click', (ev) => {
+  const b = ev.target.closest('.cartao-opcao')
+  if (b) selecionarOpcao(b.dataset.opcao)
+})
+
+function respostaAtual() {
+  const marcada = $('modal-resposta-opcoes').querySelector('input[type=radio]:checked')
+  return { option: marcada ? marcada.value : '', text: $('modal-resposta-texto').value.trim() }
+}
+
 $('modal-resposta-registrar').addEventListener('click', async () => {
   if (!cardAberto) return
-  const option = $('modal-resposta-opcao').value
-  const text = $('modal-resposta-texto').value.trim()
+  const { option, text } = respostaAtual()
   if (!option && !text) return
   const r = await fetch(comProjeto(`/api/cards/${encodeURIComponent(cardAberto.id)}/answer`), {
     method: 'POST',
@@ -368,8 +471,22 @@ $('modal-resposta-registrar').addEventListener('click', async () => {
   })
   if (!r.ok) return
   $('modal-resposta-texto').value = ''
+  toast('Registrado')
   await recarregarIndice()
   await abrirCard(cardAberto.id)
+})
+
+$('modal-resolver').addEventListener('click', async () => {
+  if (!cardAberto) return
+  const { option, text } = respostaAtual()
+  const r = await fetch(comProjeto(`/api/cards/${encodeURIComponent(cardAberto.id)}/resolve`), {
+    method: 'POST',
+    body: JSON.stringify({ option, text }),
+  })
+  if (!r.ok) return
+  toast('Pendência resolvida')
+  fecharModal()
+  await recarregarIndice()
 })
 
 // Carrega direto num card quando a URL chega como /card/<id> ou #card=<id>.
