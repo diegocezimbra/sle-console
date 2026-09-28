@@ -281,7 +281,8 @@ function markdownSeguro(texto) {
 
   for (const linha of linhas) {
     const titulo = /^(#{1,6})\s+(.*)$/.exec(linha)
-    const itemOpcao = emSecaoOpcoes && /^([A-Z])\)\s*(.*)$/.exec(linha)
+    // O card real escreve "- A: texto" (lista com dois-pontos), não "A) texto".
+    const itemOpcao = emSecaoOpcoes && /^-?\s*([A-Z])[):]\s*(.*)$/.exec(linha)
     const item = !itemOpcao && /^[-*]\s+(.*)$/.exec(linha)
 
     if (titulo) {
@@ -391,9 +392,23 @@ function fecharModal() {
   if (location.pathname.startsWith('/card/')) history.pushState({}, '', '/')
 }
 
+/** Sem "A/B/C" nenhuma (só "Outra" sobra) e sem sequer as seções de decisão no
+ *  corpo -- não tem o que estruturar, e fingir que tem só confunde. */
+function temSecaoDeDecisao(corpo) {
+  return /^##\s*(.*(?:decidir|op[cç][aã]o|op[cç][ãõo]es|recomenda).*)$/im.test(corpo ?? '')
+}
+
 function pintarSeletorOpcoes(c) {
   const wrap = $('modal-resposta-opcoes')
   const opcoes = c.opcoes ?? ['Outra']
+  const semEstrutura = opcoes.length === 1 && opcoes[0] === 'Outra' && !temSecaoDeDecisao(c.corpo)
+  if (semEstrutura) {
+    const aviso = document.createElement('p')
+    aviso.className = 'aviso-sem-opcoes'
+    aviso.textContent = 'Este card não tem opções estruturadas — escreva sua resposta.'
+    wrap.replaceChildren(aviso)
+    return
+  }
   wrap.replaceChildren(...opcoes.map((o) => {
     const label = document.createElement('label')
     const input = document.createElement('input')

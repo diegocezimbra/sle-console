@@ -308,11 +308,12 @@ export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoD
     return indexarTodos(raiz).cards.find((c) => c.id === id) ?? null
   }
 
-  /** Só as linhas `A) …`/`B) …` da seção `## Opções` — o resto do corpo não é opção de resposta. */
+  /** Só as linhas de opção da seção `## Opções` -- o card real escreve
+   *  `- A: texto` (lista com dois-pontos), não `A) texto`; aceita os dois. */
   function opcoesDoCard(corpo) {
     const secao = /^## Op(?:ç|c)(?:õ|o)es\s*$([\s\S]*?)(?=^## |\s*$(?![\s\S]))/m.exec(corpo)
     if (!secao) return []
-    return [...secao[1].matchAll(/^([A-Z])\)\s*(.+)$/gm)].map((m) => `${m[1]}) ${m[2].trim()}`)
+    return [...secao[1].matchAll(/^-?\s*([A-Z])[):]\s*(.+)$/gm)].map((m) => `${m[1]}) ${m[2].trim()}`)
   }
 
   const raizDeus = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
