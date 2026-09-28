@@ -65,6 +65,12 @@ test('publicarLocal escreve o arquivo publico e empurra pro remoto', async () =>
   assert.equal(publicado.sessoes[0].card, 'CARD-118')
   assert.equal(publicado.sessoes[0].modelo, 'claude-sonnet-5')
   assert.equal(publicado.sessoes[0].pid, undefined)
+
+  // Intervalo de 50ms rodando por 300ms tica ~6x com o MESMO censo (revisão
+  // do PR #4: o carimbo de tempo sozinho não pode parecer mudança) -- só o
+  // primeiro tick tem o que commitar.
+  const commits = git(['log', '--oneline', 'main'], verificacao).trim().split('\n')
+  assert.equal(commits.length, 2, `esperava 1 commit de publish + 1 seed, veio:\n${commits.join('\n')}`)
 })
 
 test('console em modo git le o arquivo publico e devolve em /api/agents', async () => {

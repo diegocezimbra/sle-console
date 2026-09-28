@@ -102,12 +102,16 @@ export function criarDaemon({
    *  versiona `respostas/`. Erro aqui vira evento, nunca derruba o daemon: uma
    *  sessão sem card publicado ainda deixa a máquina inteira observável. */
   function publicarSessoesLocais() {
+    let mudou
     try {
-      publicarCenso({ censoPath: publicarLocal.censoPath, publicoPath: publicarLocal.publicoPath })
+      ;({ mudou } = publicarCenso({ censoPath: publicarLocal.censoPath, publicoPath: publicarLocal.publicoPath }))
     } catch (erro) {
       registrar({ kind: 'estado-publico.falhou', loop: 'L3', card: null, session: null, payload: { erro: String(erro) } })
       return
     }
+    // Sem mudança real nas sessões, não há o que commitar -- só o carimbo de
+    // tempo mudou, e isso sozinho commitaria a cada 30s pra sempre.
+    if (!mudou) return
     const resultado = commitAndPush({
       dataDir: publicarLocal.dataDir,
       paths: [relative(publicarLocal.dataDir, publicarLocal.publicoPath)],

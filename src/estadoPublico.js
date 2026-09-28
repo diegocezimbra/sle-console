@@ -71,11 +71,19 @@ export function lerEstadoPublico(caminho) {
   }
 }
 
-/** O ciclo inteiro do lado local: lê o censo, redige, escreve. Devolve o que
- *  escreveu para quem chama decidir se vale commitar (lista vazia não é erro
- *  -- máquina pode estar mesmo sem sessão registrada). */
+/**
+ * O ciclo inteiro do lado local: lê o censo, redige, escreve -- mas só
+ * quando o conteúdo mudou de verdade. `escreverEstadoPublico` carimba
+ * `atualizado` a cada chamada; comparar o arquivo inteiro faria o timestamp
+ * sozinho parecer mudança e o loop de 30s viraria commit+push de 30 em 30s
+ * pra sempre, mesmo com a máquina parada (revisão do PR #4). A comparação é
+ * só nas sessões -- o carimbo de topo do arquivo anda junto com elas, nunca
+ * sozinho.
+ */
 export function publicarCenso({ censoPath, publicoPath }) {
   const sessoes = redigirCenso(lerCenso(censoPath))
-  escreverEstadoPublico(publicoPath, sessoes)
-  return sessoes
+  const atuais = lerEstadoPublico(publicoPath).sessoes
+  const mudou = JSON.stringify(atuais) !== JSON.stringify(sessoes)
+  if (mudou) escreverEstadoPublico(publicoPath, sessoes)
+  return { sessoes, mudou }
 }

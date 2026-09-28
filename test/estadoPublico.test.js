@@ -95,10 +95,36 @@ test('publicarCenso encadeia leitura, redacao e escrita', () => {
   mkdirSync(dirname(censoPath), { recursive: true })
   writeFileSync(censoPath, JSON.stringify({ 's [aaaaaaaa]': { escopo: 'CARD-007', modelo: 'claude-sonnet-5' } }))
 
-  const sessoes = publicarCenso({ censoPath, publicoPath })
+  const { sessoes, mudou } = publicarCenso({ censoPath, publicoPath })
+  assert.equal(mudou, true)
   assert.equal(sessoes.length, 1)
   assert.equal(sessoes[0].card, 'CARD-007')
 
   const relido = lerEstadoPublico(publicoPath)
   assert.equal(relido.sessoes[0].modelo, 'claude-sonnet-5')
+})
+
+test('publicarCenso com o mesmo censo nao reescreve o arquivo (revisao do PR #4)', () => {
+  const d = dir()
+  const censoPath = join(d, 'estado', 'sessoes.json')
+  const publicoPath = join(d, 'estado-publico', 'sessoes.json')
+  mkdirSync(dirname(censoPath), { recursive: true })
+  writeFileSync(censoPath, JSON.stringify({ 's [aaaaaaaa]': { escopo: 'CARD-007', modelo: 'claude-sonnet-5' } }))
+
+  const primeira = publicarCenso({ censoPath, publicoPath })
+  assert.equal(primeira.mudou, true)
+  const carimboAntes = lerEstadoPublico(publicoPath).atualizado
+
+  // Censo idêntico, chamado de novo -- como o publish-loop de 30 em 30s faria
+  // com a máquina parada. Sem essa checagem, o carimbo de tempo sozinho
+  // pareceria mudança e o daemon commitaria/empurraria pra sempre.
+  const segunda = publicarCenso({ censoPath, publicoPath })
+  assert.equal(segunda.mudou, false)
+  assert.equal(lerEstadoPublico(publicoPath).atualizado, carimboAntes, 'sem mudanca real, o arquivo nao e regravado')
+
+  // Censo muda de verdade -- agora sim precisa escrever.
+  writeFileSync(censoPath, JSON.stringify({ 's [aaaaaaaa]': { escopo: 'CARD-008', modelo: 'claude-sonnet-5' } }))
+  const terceira = publicarCenso({ censoPath, publicoPath })
+  assert.equal(terceira.mudou, true)
+  assert.equal(lerEstadoPublico(publicoPath).sessoes[0].card, 'CARD-008')
 })
