@@ -1,6 +1,6 @@
 // Tela da Fase 2: observar e ler. Nada aqui escreve no daemon.
 const CORES = { L1: '#4aa3df', L2: '#c08b3e', L3: '#7b5ec7' }
-const COLUNAS = ['backlog', 'refinamento', 'aprovado', 'doing', 'review', 'pendente-diego', 'done', 'recurring']
+const COLUNAS = ['backlog', 'pendente-diego', 'refinamento', 'aprovado', 'doing', 'review', 'done', 'recurring']
 // Só a coluna de decisão do Diego precisa de rótulo -- as demais já se leem pelo próprio id.
 const ROTULOS = { 'pendente-diego': 'Pendentes do Diego' }
 const eventos = []
@@ -47,6 +47,14 @@ try {
   // esperar por eles nao prova que os listeners existem.
   document.body.dataset.pronto = 'sim'
 }
+
+const idInicial = idDoCardNaUrl()
+if (idInicial) abrirCard(idInicial)
+window.addEventListener('popstate', () => {
+  const id = idDoCardNaUrl()
+  if (id) abrirCard(id)
+  else fecharModal()
+})
 
 const stream = new EventSource('/api/stream')
 stream.onopen = () => {
@@ -205,13 +213,20 @@ function pintarBoard() {
 }
 
 function botaoDeCard(c) {
-  const b = document.createElement('button')
+  // Link de verdade: Ctrl+clique/clique do meio abre em nova guia sozinho,
+  // sem JS nenhum. Clique normal intercepta e abre o modal.
+  const b = document.createElement('a')
+  b.href = `/card/${encodeURIComponent(c.id)}`
   b.className = `card risco-${c.risk ?? 'baixo'}`
   b.dataset.card = c.id
   // Na visão de todos, o card diz de que projeto veio.
   b.append(campo('cid', c.rotuloProjeto ? `${c.rotuloProjeto} · ${c.id}` : c.id),
            campo('titulo', c.title ?? ''))
-  b.addEventListener('click', () => abrirCard(c.id))
+  b.addEventListener('click', (ev) => {
+    if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button === 1) return
+    ev.preventDefault()
+    abrirCard(c.id)
+  })
 
   // Mover é uma ação do board: ir buscar o arquivo no editor para trocar uma
   // linha de frontmatter seria trabalho manual num lugar que já sabe a ordem.
@@ -239,23 +254,125 @@ function botaoDeCard(c) {
   return b
 }
 
-function abrirCard(id) {
-  const c = indice.cards.find((x) => x.id === id)
-  if (!c) return
-  const titulo = document.createElement('h3')
-  titulo.textContent = `${c.id} — ${c.title ?? ''}`
-  const meta = document.createElement('div')
-  meta.className = 'meta'
-  meta.append(
+/** Escapa e converte um subconjunto simples de markdown -- títulos, listas,
+ *  negrito e quebras -- nunca HTML cru vindo do arquivo. */
+function markdownSeguro(texto) {
+  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const linhas = esc(texto).split('\n')
+  const html = []
+  let listaAberta = false
+  for (const linha of linhas) {
+    const titulo = /^(#{1,6})\s+(.*)$/.exec(linha)
+    const item = /^[-*]\s+(.*)$/.exec(linha)
+    if (item) {
+      if (!listaAberta) { html.push('<ul>'); listaAberta = true }
+      html.push(`<li>${negrito(item[1])}</li>`)
+      continue
+    }
+    if (listaAberta) { html.push('</ul>'); listaAberta = false }
+    if (titulo) {
+      const n = titulo[1].length
+      html.push(`<h${n}>${negrito(titulo[2])}</h${n}>`)
+    } else if (linha.trim() === '') {
+      html.push('<br>')
+    } else {
+      html.push(`<p>${negrito(linha)}</p>`)
+    }
+  }
+  if (listaAberta) html.push('</ul>')
+  return html.join('\n')
+  function negrito(s) {
+    return s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+  }
+}
+
+let cardAberto = null
+
+async function abrirCard(id) {
+  let c = indice.cards.find((x) => x.id === id)
+  if (!c) {
+    const r = await fetch(comProjeto(`/api/cards/${encodeURIComponent(id)}`))
+    if (!r.ok) return
+    c = await r.json()
+  }
+  cardAberto = c
+  history.pushState({}, '', `/card/${encodeURIComponent(id)}`)
+
+  $('modal-titulo').textContent = `${c.id} — ${c.title ?? ''}`
+  $('modal-nova-guia').href = `/card/${encodeURIComponent(id)}`
+  $('modal-meta').replaceChildren(
     campo('m', `coluna ${c.coluna}`),
-    campo('m', `risco ${c.risk ?? '—'}`),
-    campo('m', `orçamento ${c.budget_usd ?? '—'} USD / ${c.budget_turns ?? '—'} turnos`)
+    campo('m', `dono ${c.owner ?? '—'}`),
+    campo('m', `prioridade ${c.prioridade ?? '—'}`),
+    campo('m', `prazo ${c.prazo ?? '—'}`),
+    campo('m', `modelo ${c.modelo ?? '—'}`)
   )
-  const corpo = document.createElement('pre')
-  corpo.textContent = c.corpo ?? ''
-  $('card-conteudo').replaceChildren(titulo, meta, corpo)
-  document.querySelector('nav button[data-tela="card"]').hidden = false
-  mostrar('card')
+  $('modal-corpo').innerHTML = markdownSeguro(c.corpo ?? '')
+  pintarRespostas(c)
+  pintarSeletorOpcoes(c)
+  $('modal-card').hidden = false
+}
+
+function fecharModal() {
+  $('modal-card').hidden = true
+  cardAberto = null
+  if (location.pathname.startsWith('/card/')) history.pushState({}, '', '/')
+}
+
+function pintarSeletorOpcoes(c) {
+  const sel = $('modal-resposta-opcao')
+  const opcoes = c.opcoes ?? ['Outra']
+  sel.replaceChildren(...opcoes.map((o) => {
+    const op = document.createElement('option')
+    op.value = o
+    op.textContent = o
+    return op
+  }))
+}
+
+/** Respostas já registradas no corpo, lidas de volta -- não duplica estado,
+ *  o arquivo já é a verdade. */
+function pintarRespostas(c) {
+  const alvo = $('modal-respostas')
+  const blocos = [...(c.corpo ?? '').matchAll(/## Resposta do Diego \(([^)]+)\)\n\*\*Opção:\*\* (.*)\n([\s\S]*?)(?=\n## |$)/g)]
+  alvo.replaceChildren(...blocos.map(([, quando, opcao, texto]) => {
+    const p = document.createElement('p')
+    p.className = 'resposta-diego'
+    const b = document.createElement('b')
+    b.textContent = `${quando} — ${opcao}`
+    p.append(b, document.createTextNode(texto.trim()))
+    return p
+  }))
+}
+
+$('modal-fechar').addEventListener('click', fecharModal)
+$('modal-card').addEventListener('click', (ev) => {
+  if (ev.target === $('modal-card')) fecharModal()
+})
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && !$('modal-card').hidden) fecharModal()
+})
+$('modal-resposta-registrar').addEventListener('click', async () => {
+  if (!cardAberto) return
+  const option = $('modal-resposta-opcao').value
+  const text = $('modal-resposta-texto').value.trim()
+  if (!option && !text) return
+  const r = await fetch(comProjeto(`/api/cards/${encodeURIComponent(cardAberto.id)}/answer`), {
+    method: 'POST',
+    body: JSON.stringify({ option, text }),
+  })
+  if (!r.ok) return
+  $('modal-resposta-texto').value = ''
+  await recarregarIndice()
+  await abrirCard(cardAberto.id)
+})
+
+// Carrega direto num card quando a URL chega como /card/<id> ou #card=<id>.
+function idDoCardNaUrl() {
+  const m = /^\/card\/([^/]+)/.exec(location.pathname)
+  if (m) return decodeURIComponent(m[1])
+  const h = /card=([^&]+)/.exec(location.hash)
+  return h ? decodeURIComponent(h[1]) : null
 }
 
 // ── Edição ────────────────────────────────────────────────────────────────

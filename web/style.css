@@ -13,7 +13,7 @@ h2{font-size:11px;margin:0 0 8px;color:var(--fraco);letter-spacing:.1em;text-tra
 .pill.vivo{color:var(--ok);border-color:var(--ok)}
 main{padding:12px;height:calc(100vh - 49px)}
 #tela-fluxo{display:grid;grid-template-columns:260px 1fr;grid-template-rows:auto 1fr;gap:12px;height:100%}
-#tela-fluxo>div,#tela-board,#tela-card{background:var(--painel);border:1px solid var(--borda);
+#tela-fluxo>div,#tela-board{background:var(--painel);border:1px solid var(--borda);
 border-radius:6px;padding:12px;min-height:0}
 #tela-board,#tela-card{height:100%;overflow:auto}
 #sessoes-painel{grid-row:1/3}
@@ -40,11 +40,27 @@ padding:8px;cursor:pointer;text-align:left;color:inherit;font:inherit;width:100%
 .card.risco-alto{border-left-color:var(--erro)}
 .card.risco-medio{border-left-color:var(--l2)}
 .card.risco-baixo{border-left-color:var(--ok)}
-#card-conteudo h3{margin:0 0 4px;font-size:15px}
-#card-conteudo .meta{display:flex;gap:14px;color:var(--fraco);font-size:11px;margin-bottom:14px;
-flex-wrap:wrap}
-#card-conteudo pre{white-space:pre-wrap;background:var(--fundo);border:1px solid var(--borda);
-border-radius:4px;padding:12px;margin:0;max-width:78ch}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;
+justify-content:center;z-index:50}
+.modal-overlay[hidden]{display:none}
+.modal-caixa{background:var(--painel);border:1px solid var(--borda);border-radius:6px;max-width:640px;
+width:90%;max-height:85vh;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
+.modal-topo{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.modal-topo h3{margin:0;font-size:15px}
+.modal-acoes{display:flex;gap:10px;align-items:center;font-size:12px}
+.modal-acoes a{color:var(--l1)}
+.modal-acoes button{background:var(--fundo);color:var(--texto);border:1px solid var(--borda);
+border-radius:4px;cursor:pointer;padding:2px 8px}
+.modal-meta{display:flex;gap:14px;color:var(--fraco);font-size:11px;flex-wrap:wrap}
+.modal-corpo{white-space:pre-wrap;background:var(--fundo);border:1px solid var(--borda);
+border-radius:4px;padding:12px;margin:0;line-height:1.4}
+.modal-resposta{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--borda);padding-top:10px}
+.modal-resposta textarea{min-height:70px;resize:vertical;background:var(--fundo);color:var(--texto);
+border:1px solid var(--borda);border-radius:4px;padding:6px;font:inherit}
+.modal-resposta button{align-self:flex-end;background:var(--painel);color:var(--texto);
+border:1px solid var(--borda);border-radius:4px;padding:6px 12px;cursor:pointer}
+.resposta-diego{border-left:3px solid var(--l2);padding-left:8px;margin:0 0 8px;white-space:pre-wrap;font-size:13px}
+.resposta-diego b{display:block;color:var(--fraco);font-weight:normal;font-size:11px;margin-bottom:2px}
 ul,ol{margin:0;padding:0;list-style:none}
 #sessoes li{padding:6px 0;border-bottom:1px solid var(--borda)}
 #sessoes .id{color:var(--texto);display:block}

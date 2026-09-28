@@ -13,7 +13,6 @@
     <button data-tela="controle">Controle</button>
     <button data-tela="metricas">Métricas</button>
     <button data-tela="historico">Histórico</button>
-    <button data-tela="card" hidden>Card</button>
   </nav>
   <select id="projeto" title="projeto observado"></select>
   <span class="cresce"></span>
@@ -97,8 +96,25 @@
     <ol id="dias"></ol>
   </section>
 
-  <section id="tela-card" hidden>
-    <article id="card-conteudo"></article>
-  </section>
 </main>
+
+<div id="modal-card" class="modal-overlay" hidden>
+  <div class="modal-caixa" role="dialog" aria-modal="true">
+    <div class="modal-topo">
+      <h3 id="modal-titulo"></h3>
+      <div class="modal-acoes">
+        <a id="modal-nova-guia" href="#" target="_blank" rel="noopener">Abrir em nova guia ↗</a>
+        <button id="modal-fechar" title="Fechar (Esc)">✕</button>
+      </div>
+    </div>
+    <div id="modal-meta" class="modal-meta"></div>
+    <div id="modal-corpo" class="modal-corpo"></div>
+    <div id="modal-respostas"></div>
+    <div class="modal-resposta">
+      <select id="modal-resposta-opcao"></select>
+      <textarea id="modal-resposta-texto" maxlength="4000" placeholder="Minha resposta…"></textarea>
+      <button id="modal-resposta-registrar">Salvar resposta</button>
+    </div>
+  </div>
+</div>
 <script type="module" src="/app.js"></script>
