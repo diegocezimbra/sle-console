@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 import { Estado } from './estado.js'
+import { createAuthMiddleware } from './auth.js'
 import { normalizar } from './ingest.js'
 import { indexarCards } from './cards.js'
 import { diffDoArquivo, estadoDoGit, historico, prsAbertos } from './repo.js'
@@ -49,6 +50,7 @@ export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoD
   const estado = new Estado(dados)
   const runner = new Runner(projeto, { tetoDiarioUsd })
   const ouvintes = new Set()
+  const autorizar = createAuthMiddleware()
 
   // O disco e a verdade: quando ele muda, a tela sabe. Sem polling.
   const observador = observarArvore(projeto)
@@ -70,6 +72,7 @@ export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoD
   })
 
   const servidor = createServer((req, res) => {
+    if (!autorizar(req, res)) return
     const rota = req.url?.split('?')[0] ?? '/'
     // Projeto por requisicao: a tela troca de projeto sem reiniciar o daemon.
     const pedido = new URL(req.url, 'http://x').searchParams.get('projeto')
