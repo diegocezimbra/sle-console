@@ -170,13 +170,24 @@ function pintarSessoes(sessoes) {
     ...sessoes.map((s) => {
       const li = document.createElement('li')
       if (!s.ativa) li.className = 'morta'
-      li.append(
-        campo('id', s.agente ?? s.projeto ?? s.id.slice(0, 8)),
-        campo('meta', `${s.eventos} eventos · ${s.ativa ? `há ${idade(s.inativoMs)}` : 'inativa'}`)
-      )
+      li.append(campo('id', s.agente ?? s.projeto ?? (s.id ?? '').slice(0, 8)), campo('meta', metaDeSessao(s)))
       return li
     })
   )
+}
+
+/**
+ * Uma sessão vista por hook tem `eventos`; uma vista via `estado-publico/sessoes.json`
+ * (CARD-120 -- console em modo git, sem hook alcançável) tem `card`/`modelo` em vez
+ * disso. As duas cabem na mesma linha sem a tela precisar saber a diferença.
+ */
+function metaDeSessao(s) {
+  const partes = []
+  if (s.card) partes.push(s.card)
+  if (s.modelo) partes.push(s.modelo)
+  if (s.eventos != null) partes.push(`${s.eventos} eventos`)
+  partes.push(s.ativa ? (s.inativoMs != null ? `há ${idade(s.inativoMs)}` : 'ativa') : 'inativa')
+  return partes.join(' · ')
 }
 
 /** "3s", "4min", "2h" -- tempo desde o ultimo sinal. */

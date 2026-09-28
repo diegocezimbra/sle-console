@@ -13,6 +13,7 @@ import { dirname, join, relative } from 'node:path'
 import { Estado } from './estado.js'
 import { createAuthMiddleware } from './auth.js'
 import { startPullLoop, commitAndPush } from './gitSync.js'
+import { publicarCenso, lerEstadoPublico } from './estadoPublico.js'
 import { normalizar } from './ingest.js'
 import { indexarCards } from './cards.js'
 import { diffDoArquivo, estadoDoGit, historico, prsAbertos } from './repo.js'
@@ -36,6 +37,13 @@ import {
 
 const WEB = join(dirname(fileURLToPath(import.meta.url)), '..', 'web')
 
+// Caminho fixo, relativo à raiz do repositório, dos dois lados (quem publica
+// local e quem lê em modo git precisam concordar sem se combinar em runtime).
+const CAMINHO_ESTADO_PUBLICO = 'estado-publico/sessoes.json'
+// Acima disto uma sessão publicada é fantasma: a máquina local já teria
+// atualizado o censo de novo se ainda estivesse viva (ver `deus sessao set`).
+const TTL_ESTADO_PUBLICO_MS = 20 * 60_000
+
 /** Servidos por nome, nunca por caminho vindo da URL. */
 const ESTATICOS = {
   '/': ['index.html', 'text/html; charset=utf-8'],
@@ -53,6 +61,11 @@ export function criarDaemon({
   raiz = null,
   tetoDiarioUsd = Infinity,
   git = null, // { dataDir, keyPath, intervalMs? } quando CONSOLE_MODE=git; `projeto` já é o clone.
+  // { censoPath, publicoPath, dataDir, intervalMs? } no console LOCAL (CARD-120): publica
+  // o censo de sessões (estado/sessoes.json) redigido em `publicoPath` e empurra pro git a
+  // cada `intervalMs` -- é o que o console em modo git lê pra popular AGENTES e a régua,
+  // já que não tem rede direta até aqui pros hooks de sessão.
+  publicarLocal = null,
 }) {
   const estado = new Estado(dados)
   const runner = new Runner(projeto, { tetoDiarioUsd })
@@ -83,6 +96,57 @@ export function criarDaemon({
         },
       })
     : null
+
+  /** Fecha o ciclo local do CARD-120: redige o censo, escreve o arquivo
+   *  público e empurra pro remoto -- mesmo mecanismo de `commitAndPush` que já
+   *  versiona `respostas/`. Erro aqui vira evento, nunca derruba o daemon: uma
+   *  sessão sem card publicado ainda deixa a máquina inteira observável. */
+  function publicarSessoesLocais() {
+    try {
+      publicarCenso({ censoPath: publicarLocal.censoPath, publicoPath: publicarLocal.publicoPath })
+    } catch (erro) {
+      registrar({ kind: 'estado-publico.falhou', loop: 'L3', card: null, session: null, payload: { erro: String(erro) } })
+      return
+    }
+    const resultado = commitAndPush({
+      dataDir: publicarLocal.dataDir,
+      paths: [relative(publicarLocal.dataDir, publicarLocal.publicoPath)],
+      message: 'chore(console): publica sessões ativas',
+    })
+    if (!resultado.ok) {
+      registrar({ kind: 'git.push.falhou', loop: 'L3', card: null, session: null, payload: { erro: resultado.stderr } })
+    }
+  }
+  const publicarLoop = publicarLocal
+    ? setInterval(publicarSessoesLocais, publicarLocal.intervalMs ?? 30_000)
+    : null
+  publicarLoop?.unref?.()
+
+  /** Lado do console em modo git: lê o arquivo que a máquina local publicou
+   *  (via `publicarSessoesLocais`, chegado por `git pull`) e devolve no
+   *  mesmo formato de `estado.snapshot().sessoes`, pra AGENTES e a régua não
+   *  precisarem saber a diferença entre uma sessão vista por hook e uma vista
+   *  por git. Fora do modo git, não há o que ler -- lista vazia, sem custo. */
+  function sessoesPublicadas() {
+    if (!git) return []
+    const agora = Date.now()
+    const { sessoes } = lerEstadoPublico(join(git.dataDir, CAMINHO_ESTADO_PUBLICO))
+    return sessoes.map((s) => {
+      const inativoMs = s.atualizado ? agora - Date.parse(s.atualizado) : null
+      return {
+        id: s.sessao,
+        agente: null,
+        projeto: s.projeto ?? null,
+        card: s.card ?? null,
+        modelo: s.modelo ?? null,
+        eventos: null,
+        inicio: null,
+        ultimo: s.atualizado ?? null,
+        inativoMs,
+        ativa: inativoMs != null ? inativoMs < TTL_ESTADO_PUBLICO_MS : true,
+      }
+    })
+  }
 
   /** Commita e empurra tudo que mudou em `cards/` no clone -- no-op fora do
    *  modo git. `-A` na raiz de `cards/` (ver gitSync.js) cobre tanto edição
@@ -194,7 +258,7 @@ export function criarDaemon({
       return json(res, {
         agentes: todos ? agentesDeTodos(raiz) : runner.agentes(alvo),
         ativos: runner.ativos(),
-        sessoes: estado.snapshot().sessoes.filter((x) => x.ativa),
+        sessoes: [...estado.snapshot().sessoes.filter((x) => x.ativa), ...sessoesPublicadas()],
         gasto: runner.gasto(),
       })
     }
@@ -270,6 +334,7 @@ export function criarDaemon({
       return git().then((g) =>
         json(res, {
           ...estado.snapshot(),
+          sessoes: [...estado.snapshot().sessoes, ...sessoesPublicadas()],
           cards: i.cards,
           board: i.board,
           divergencias: i.divergencias,
@@ -657,7 +722,15 @@ export function criarDaemon({
     return null
   }
 
-  return { servidor, estado, observador, runner, otlp, pararGit: () => pullLoop?.stop() }
+  return {
+    servidor,
+    estado,
+    observador,
+    runner,
+    otlp,
+    pararGit: () => pullLoop?.stop(),
+    pararPublicarLocal: () => (publicarLoop ? clearInterval(publicarLoop) : null),
+  }
 }
 
 const json = (res, dados) => {
