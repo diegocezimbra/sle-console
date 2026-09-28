@@ -10,7 +10,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 /** Ordem do pipeline, nao ordem alfabetica: e assim que o board se le. */
-export const COLUNAS = ['backlog', 'refinamento', 'aprovado', 'doing', 'review', 'done', 'recurring']
+export const COLUNAS = ['backlog', 'pendente-diego', 'refinamento', 'aprovado', 'doing', 'review', 'done', 'recurring']
 
 export function lerCard(texto) {
   if (!texto.startsWith('---')) return null

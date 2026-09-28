@@ -1,6 +1,8 @@
 // Tela da Fase 2: observar e ler. Nada aqui escreve no daemon.
 const CORES = { L1: '#4aa3df', L2: '#c08b3e', L3: '#7b5ec7' }
-const COLUNAS = ['backlog', 'refinamento', 'aprovado', 'doing', 'review', 'done', 'recurring']
+const COLUNAS = ['backlog', 'pendente-diego', 'refinamento', 'aprovado', 'doing', 'review', 'done', 'recurring']
+// Só a coluna de decisão do Diego precisa de rótulo -- as demais já se leem pelo próprio id.
+const ROTULOS = { 'pendente-diego': 'Pendentes do Diego' }
 const eventos = []
 let indice = { board: {}, cards: [] }
 // Projeto observado. Vai em toda chamada de leitura, para a tela nunca mostrar
@@ -11,9 +13,19 @@ const comProjeto = (rota) =>
 
 const $ = (id) => document.getElementById(id)
 
-function mostrar(tela) {
+// As mesmas abas do nav são rotas de verdade -- refresh na aba tem que voltar
+// pra ela, não sempre pro Fluxo.
+const TELAS = ['fluxo', 'board', 'editar', 'controle', 'metricas', 'historico']
+const TELA_PADRAO = 'fluxo'
+
+function urlComProjeto(caminho) {
+  return projetoAtual ? `${caminho}?projeto=${encodeURIComponent(projetoAtual)}` : caminho
+}
+
+function mostrar(tela, { navegar = true } = {}) {
   for (const s of document.querySelectorAll('main > section')) s.hidden = s.id !== `tela-${tela}`
   for (const b of document.querySelectorAll('nav button')) b.classList.toggle('ativa', b.dataset.tela === tela)
+  if (navegar) history.pushState({}, '', urlComProjeto(`/${tela}`))
   if (tela === 'fluxo') pintarRegua()
   // Cada tela relê o disco ao ser aberta: o arquivo pode ter mudado no editor.
   if (tela === 'board') recarregarIndice()
@@ -24,6 +36,13 @@ function mostrar(tela) {
 }
 for (const b of document.querySelectorAll('nav button')) {
   b.addEventListener('click', () => mostrar(b.dataset.tela))
+}
+
+/** Aba pedida pela URL -- `/board`, `/metricas`… -- ou `null` se não é uma
+ *  dessas rotas (ex.: `/card/<id>`, que abre por cima da aba padrão). */
+function telaNaUrl() {
+  const nome = location.pathname.replace(/^\//, '')
+  return TELAS.includes(nome) ? nome : null
 }
 
 try {
@@ -45,6 +64,19 @@ try {
   // esperar por eles nao prova que os listeners existem.
   document.body.dataset.pronto = 'sim'
 }
+
+// A aba vem da URL no load (F5 fica onde estava); "/card/<id>" abre o modal
+// por cima do Board, que é a aba de onde os cards se abrem.
+mostrar(telaNaUrl() ?? (idDoCardNaUrl() ? 'board' : TELA_PADRAO), { navegar: false })
+const idInicial = idDoCardNaUrl()
+if (idInicial) abrirCard(idInicial)
+window.addEventListener('popstate', () => {
+  const id = idDoCardNaUrl()
+  if (id) abrirCard(id)
+  else fecharModal()
+  const tela = telaNaUrl()
+  if (tela) mostrar(tela, { navegar: false })
+})
 
 const stream = new EventSource('/api/stream')
 stream.onopen = () => {
@@ -100,10 +132,18 @@ async function montarSeletorDeProjetos() {
   )
   sel.addEventListener('change', async () => {
     projetoAtual = sel.value
+    history.replaceState({}, '', urlComProjeto(location.pathname))
     await recarregarIndice()
     if (!$('tela-editar').hidden) pintarArquivos()
     if (!$('tela-controle').hidden) pintarControle()
   })
+  // F5 na URL com ?projeto=... sobrevive: a querystring vence o default do
+  // servidor, senão trocar de aba sempre voltava pro primeiro projeto.
+  const pedido = new URL(location.href).searchParams.get('projeto')
+  if (pedido && [...sel.options].some((o) => o.value === pedido)) {
+    projetoAtual = pedido
+    sel.value = pedido
+  }
 }
 
 function pintarContadores(c) {
@@ -193,7 +233,7 @@ function pintarBoard() {
       div.dataset.coluna = coluna
 
       const h = document.createElement('h3')
-      h.append(campo('nome', coluna), campo('qtd', String(cards.length)))
+      h.append(campo('nome', ROTULOS[coluna] ?? coluna), campo('qtd', String(cards.length)))
       const lista = document.createElement('div')
       lista.append(...cards.map(botaoDeCard))
       div.append(h, lista)
@@ -203,13 +243,25 @@ function pintarBoard() {
 }
 
 function botaoDeCard(c) {
-  const b = document.createElement('button')
+  // Link de verdade: Ctrl+clique/clique do meio abre em nova guia sozinho,
+  // sem JS nenhum. Clique normal intercepta e abre o modal.
+  const b = document.createElement('a')
+  b.href = `/card/${encodeURIComponent(c.id)}`
   b.className = `card risco-${c.risk ?? 'baixo'}`
   b.dataset.card = c.id
   // Na visão de todos, o card diz de que projeto veio.
-  b.append(campo('cid', c.rotuloProjeto ? `${c.rotuloProjeto} · ${c.id}` : c.id),
-           campo('titulo', c.title ?? ''))
-  b.addEventListener('click', () => abrirCard(c.id))
+  const filhos = []
+  if (c.coluna === 'pendente-diego') filhos.push(campo('selo-decisao', 'AGUARDA VOCÊ'))
+  filhos.push(
+    campo('cid', c.rotuloProjeto ? `${c.rotuloProjeto} · ${c.id}` : c.id),
+    campo('titulo', c.title ?? '')
+  )
+  b.append(...filhos)
+  b.addEventListener('click', (ev) => {
+    if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button === 1) return
+    ev.preventDefault()
+    abrirCard(c.id)
+  })
 
   // Mover é uma ação do board: ir buscar o arquivo no editor para trocar uma
   // linha de frontmatter seria trabalho manual num lugar que já sabe a ordem.
@@ -237,23 +289,273 @@ function botaoDeCard(c) {
   return b
 }
 
-function abrirCard(id) {
-  const c = indice.cards.find((x) => x.id === id)
-  if (!c) return
+function inline(s) {
+  return s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>')
+}
+
+/** Escapa e converte um subconjunto simples de markdown -- títulos, listas,
+ *  negrito, código inline. `## Opções` vira cartões clicáveis (A/B/C…), e
+ *  esses cartões mais "decidir"/"recomendação" ficam num bloco em destaque:
+ *  é a única pergunta que o Diego veio ao modal para responder. */
+function markdownSeguro(texto) {
+  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const linhas = esc(texto).split('\n')
+  const html = []
+  let listaAberta = false
+  let opcoesAbertas = false
+  let decisaoAberta = false
+  let emSecaoOpcoes = false
+
+  const fecharLista = () => { if (listaAberta) { html.push('</ul>'); listaAberta = false } }
+  const fecharOpcoes = () => { if (opcoesAbertas) { html.push('</div>'); opcoesAbertas = false } }
+
+  for (const linha of linhas) {
+    const titulo = /^(#{1,6})\s+(.*)$/.exec(linha)
+    // O card real escreve "- A: texto" (lista com dois-pontos), não "A) texto".
+    const itemOpcao = emSecaoOpcoes && /^-?\s*([A-Z])[):]\s*(.*)$/.exec(linha)
+    const item = !itemOpcao && /^[-*]\s+(.*)$/.exec(linha)
+
+    if (titulo) {
+      fecharLista()
+      fecharOpcoes()
+      const textoTitulo = titulo[2]
+      const ehDecisao = /decidir|op[cç][aã]o|op[cç][ãõo]es|recomenda/i.test(textoTitulo)
+      if (ehDecisao && !decisaoAberta) { html.push('<div class="bloco-decisao">'); decisaoAberta = true }
+      else if (!ehDecisao && decisaoAberta) { html.push('</div>'); decisaoAberta = false }
+      emSecaoOpcoes = /op[cç][ãõo]es/i.test(textoTitulo)
+      const n = Math.min(titulo[1].length + 1, 6)
+      html.push(`<h${n}>${inline(textoTitulo)}</h${n}>`)
+      continue
+    }
+    if (itemOpcao) {
+      if (!opcoesAbertas) { html.push('<div class="cartoes-opcao">'); opcoesAbertas = true }
+      const rotulo = `${itemOpcao[1]}) ${itemOpcao[2]}`
+      html.push(`<button type="button" class="cartao-opcao" data-opcao="${rotulo.replace(/"/g, '&quot;')}">${inline(rotulo)}</button>`)
+      continue
+    }
+    fecharOpcoes()
+    if (item) {
+      if (!listaAberta) { html.push('<ul>'); listaAberta = true }
+      html.push(`<li>${inline(item[1])}</li>`)
+      continue
+    }
+    fecharLista()
+    if (linha.trim() === '') continue
+    html.push(`<p>${inline(linha)}</p>`)
+  }
+  fecharLista()
+  fecharOpcoes()
+  if (decisaoAberta) html.push('</div>')
+  return html.join('\n')
+}
+
+/** "2026-09-28T18:00…" -> "28/09 18:00"; formato que não bate cai como veio. */
+function formatarQuandoPrazo(p) {
+  if (!p) return null
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(String(p))
+  return m ? `${m[3]}/${m[2]} ${m[4]}:${m[5]}` : String(p)
+}
+
+function chip(texto) {
+  return campo('chip', texto)
+}
+
+let cardAberto = null
+// De onde o modal foi aberto -- pra onde o ✕ volta. Sem isto, fechar sempre
+// caía em "/" em vez da aba (e do ?projeto=) de onde o card foi clicado.
+let origemModal = null
+
+function capturarOrigemDoModal() {
+  if (!location.pathname.startsWith('/card/')) {
+    origemModal = location.pathname + location.search
+  } else if (!origemModal) {
+    // Carregou direto em /card/<id> (link, nova guia): a origem é o Board.
+    origemModal = '/board' + location.search
+  }
+}
+
+async function abrirCard(id) {
+  capturarOrigemDoModal()
+  let c = indice.cards.find((x) => x.id === id)
+  if (!c) {
+    try {
+      const r = await fetch(comProjeto(`/api/cards/${encodeURIComponent(id)}`))
+      if (!r.ok) return erroDeCard(id)
+      c = await r.json()
+    } catch {
+      return erroDeCard(id)
+    }
+  }
+  cardAberto = c
+  document.querySelector('.modal-resposta').hidden = false
+  history.pushState({}, '', `/card/${encodeURIComponent(id)}${location.search}`)
+
+  $('modal-id').textContent = c.id
+  $('modal-selo').hidden = c.coluna !== 'pendente-diego'
+  $('modal-selo').textContent = 'AGUARDA VOCÊ'
+  $('modal-titulo').textContent = c.title ?? ''
+  $('modal-nova-guia').href = `/card/${encodeURIComponent(id)}${location.search}`
+
+  // Só metadado preenchido vira chip -- "prioridade —" não ajuda ninguém.
+  const chips = []
+  if (c.owner) chips.push(chip(c.owner))
+  const prazo = formatarQuandoPrazo(c.prazo)
+  if (prazo) chips.push(chip(`prazo ${prazo}`))
+  if (c.prioridade) chips.push(chip(c.prioridade))
+  if (c.modelo) chips.push(chip(c.modelo))
+  $('modal-meta').replaceChildren(...chips)
+
+  $('modal-corpo').innerHTML = markdownSeguro(c.corpo ?? '')
+  pintarRespostas(c)
+  pintarSeletorOpcoes(c)
+  $('modal-resolver').hidden = c.coluna !== 'pendente-diego'
+  $('modal-card').hidden = false
+}
+
+/** Card não achado ou rede falhou: o modal abre mesmo assim, com o ✕ vivo --
+ *  travar sem mensagem foi o bug real que o Diego reportou. */
+function erroDeCard(id) {
+  cardAberto = null
+  $('modal-id').textContent = id
+  $('modal-selo').hidden = true
+  $('modal-titulo').textContent = 'Não encontrado'
+  $('modal-nova-guia').href = `/card/${encodeURIComponent(id)}`
+  $('modal-meta').replaceChildren()
+  $('modal-corpo').innerHTML = `<p>Não achei o card <b>${id}</b> em nenhum projeto observado.</p>`
+  $('modal-respostas').replaceChildren()
+  $('modal-resposta-opcoes').replaceChildren()
+  document.querySelector('.modal-resposta').hidden = true
+  $('modal-card').hidden = false
+}
+
+function fecharModal() {
+  document.querySelector('.modal-resposta').hidden = false
+  $('modal-card').hidden = true
+  cardAberto = null
+  // Só mexe na URL se ela ainda for a do card -- um fechamento por popstate já
+  // chegou com a URL de destino trocada pelo próprio navegador.
+  if (location.pathname.startsWith('/card/')) history.replaceState({}, '', origemModal ?? '/board')
+  origemModal = null
+}
+
+/** Sem "A/B/C" nenhuma (só "Outra" sobra) e sem sequer as seções de decisão no
+ *  corpo -- não tem o que estruturar, e fingir que tem só confunde. */
+function temSecaoDeDecisao(corpo) {
+  return /^##\s*(.*(?:decidir|op[cç][aã]o|op[cç][ãõo]es|recomenda).*)$/im.test(corpo ?? '')
+}
+
+function pintarSeletorOpcoes(c) {
+  const wrap = $('modal-resposta-opcoes')
+  const opcoes = c.opcoes ?? ['Outra']
+  const semEstrutura = opcoes.length === 1 && opcoes[0] === 'Outra' && !temSecaoDeDecisao(c.corpo)
+  if (semEstrutura) {
+    const aviso = document.createElement('p')
+    aviso.className = 'aviso-sem-opcoes'
+    aviso.textContent = 'Este card não tem opções estruturadas — escreva sua resposta.'
+    wrap.replaceChildren(aviso)
+    return
+  }
+  wrap.replaceChildren(...opcoes.map((o) => {
+    const label = document.createElement('label')
+    const input = document.createElement('input')
+    input.type = 'radio'
+    input.name = 'resposta-opcao'
+    input.value = o
+    input.addEventListener('change', () => selecionarOpcao(o))
+    label.append(input, document.createTextNode(o))
+    return label
+  }))
+}
+
+/** Cartão A/B/C do corpo e rádio do rodapé são a mesma escolha -- clicar
+ *  qualquer um dos dois marca os dois. */
+function selecionarOpcao(valor) {
+  for (const r of $('modal-resposta-opcoes').querySelectorAll('input[type=radio]')) {
+    r.checked = r.value === valor
+  }
+  for (const el of $('modal-corpo').querySelectorAll('.cartao-opcao')) {
+    el.classList.toggle('selecionada', el.dataset.opcao === valor)
+  }
+}
+
+/** Respostas já registradas no corpo, lidas de volta -- não duplica estado,
+ *  o arquivo já é a verdade. */
+function pintarRespostas(c) {
+  const alvo = $('modal-respostas')
+  const blocos = [...(c.corpo ?? '').matchAll(/## Resposta do Diego \(([^)]+)\)\n\*\*Opção:\*\* (.*)\n([\s\S]*?)(?=\n## |$)/g)]
+  if (!blocos.length) return alvo.replaceChildren()
   const titulo = document.createElement('h3')
-  titulo.textContent = `${c.id} — ${c.title ?? ''}`
-  const meta = document.createElement('div')
-  meta.className = 'meta'
-  meta.append(
-    campo('m', `coluna ${c.coluna}`),
-    campo('m', `risco ${c.risk ?? '—'}`),
-    campo('m', `orçamento ${c.budget_usd ?? '—'} USD / ${c.budget_turns ?? '—'} turnos`)
-  )
-  const corpo = document.createElement('pre')
-  corpo.textContent = c.corpo ?? ''
-  $('card-conteudo').replaceChildren(titulo, meta, corpo)
-  document.querySelector('nav button[data-tela="card"]').hidden = false
-  mostrar('card')
+  titulo.textContent = 'Respostas anteriores'
+  alvo.replaceChildren(titulo, ...blocos.map(([, quando, opcao, texto]) => {
+    const p = document.createElement('p')
+    p.className = 'resposta-diego'
+    const b = document.createElement('b')
+    b.textContent = `${formatarQuandoPrazo(quando.replace(' ', 'T')) ?? quando} — ${opcao}`
+    p.append(b, document.createTextNode(texto.trim()))
+    return p
+  }))
+}
+
+let toastTimer = null
+function toast(msg) {
+  const el = $('toast')
+  el.textContent = msg
+  el.hidden = false
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { el.hidden = true }, 2500)
+}
+
+$('modal-fechar').addEventListener('click', fecharModal)
+$('modal-card').addEventListener('click', (ev) => {
+  if (ev.target === $('modal-card')) fecharModal()
+})
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && !$('modal-card').hidden) fecharModal()
+})
+$('modal-corpo').addEventListener('click', (ev) => {
+  const b = ev.target.closest('.cartao-opcao')
+  if (b) selecionarOpcao(b.dataset.opcao)
+})
+
+function respostaAtual() {
+  const marcada = $('modal-resposta-opcoes').querySelector('input[type=radio]:checked')
+  return { option: marcada ? marcada.value : '', text: $('modal-resposta-texto').value.trim() }
+}
+
+$('modal-resposta-registrar').addEventListener('click', async () => {
+  if (!cardAberto) return
+  const { option, text } = respostaAtual()
+  if (!option && !text) return
+  const r = await fetch(comProjeto(`/api/cards/${encodeURIComponent(cardAberto.id)}/answer`), {
+    method: 'POST',
+    body: JSON.stringify({ option, text }),
+  })
+  if (!r.ok) return
+  $('modal-resposta-texto').value = ''
+  toast('Registrado')
+  await recarregarIndice()
+  await abrirCard(cardAberto.id)
+})
+
+$('modal-resolver').addEventListener('click', async () => {
+  if (!cardAberto) return
+  const { option, text } = respostaAtual()
+  const r = await fetch(comProjeto(`/api/cards/${encodeURIComponent(cardAberto.id)}/resolve`), {
+    method: 'POST',
+    body: JSON.stringify({ option, text }),
+  })
+  if (!r.ok) return
+  toast('Pendência resolvida')
+  fecharModal()
+  await recarregarIndice()
+})
+
+// Carrega direto num card quando a URL chega como /card/<id> ou #card=<id>.
+function idDoCardNaUrl() {
+  const m = /^\/card\/([^/]+)/.exec(location.pathname)
+  if (m) return decodeURIComponent(m[1])
+  const h = /card=([^&]+)/.exec(location.hash)
+  return h ? decodeURIComponent(h[1]) : null
 }
 
 // ── Edição ────────────────────────────────────────────────────────────────
