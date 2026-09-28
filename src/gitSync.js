@@ -36,8 +36,16 @@ function run(args, { cwd, env } = {}) {
  * `sshCommand` disables host-key prompts (`StrictHostKeyChecking=accept-new`)
  * so the first clone in a fresh container doesn't hang waiting for a `yes`
  * nobody is there to type.
+ *
+ * `keyPath` is optional: the cloud clone (CONSOLE_MODE=git) has no ambient
+ * SSH identity, only the deploy key written to disk, so it must be told
+ * which one to use. The local machine (CARD-120: publishing the session
+ * census back to git) already has its own working SSH agent/credentials for
+ * this repo -- forcing a key there would fight the identity that already
+ * works, so it runs with the ambient environment untouched.
  */
 function sshEnv(keyPath) {
+  if (!keyPath) return process.env
   return {
     ...process.env,
     GIT_SSH_COMMAND: `ssh -i ${keyPath} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new`,

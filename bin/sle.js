@@ -59,12 +59,30 @@ const raiz = git ? [git.dataDir] : process.env.SLE_RAIZ ? [process.env.SLE_RAIZ]
 const dados = process.env.SLE_DATA ?? cfg.dados ?? join(INSTALACAO, 'dados', 'console')
 const tetoDiarioUsd = Number(process.env.SLE_TETO_USD ?? cfg.tetoDiarioUsd)
 
-const { servidor, observador, runner, otlp, pararGit } = criarDaemon({
+/**
+ * CARD-120: só o console LOCAL publica -- a nuvem (`modoGit`) lê o que chegou
+ * por `git pull`, nunca escreve o próprio censo de volta. `SLE_PUBLICAR_CENSO_DIR`
+ * aponta pro repositório dono do censo (`estado/sessoes.json`, hoje só o
+ * 00-DEUS); sem essa env, nenhum publicar-loop sobe -- não dá pra publicar o
+ * censo de um repositório que não observa `estado/sessoes.json`.
+ */
+const publicarCensoDir = !modoGit ? process.env.SLE_PUBLICAR_CENSO_DIR ?? null : null
+const publicarLocal = publicarCensoDir
+  ? {
+      censoPath: process.env.SLE_PUBLICAR_CENSO_PATH ?? join(publicarCensoDir, 'estado', 'sessoes.json'),
+      publicoPath: join(publicarCensoDir, 'estado-publico', 'sessoes.json'),
+      dataDir: publicarCensoDir,
+      intervalMs: Number(process.env.SLE_PUBLICAR_CENSO_MS ?? 30_000),
+    }
+  : null
+
+const { servidor, observador, runner, otlp, pararGit, pararPublicarLocal } = criarDaemon({
   dados,
   projeto: raiz[0],
   raiz,
   tetoDiarioUsd,
   git,
+  publicarLocal,
 })
 
 servidor.listen(porta, host, () => {
@@ -73,6 +91,7 @@ servidor.listen(porta, host, () => {
   for (const r of raiz) console.log(`             ${r}`)
   console.log(`  dados      ${dados}/events.jsonl`)
   if (git) console.log(`  git        ${git.dataDir} (pull a cada ${git.intervalMs}ms)`)
+  if (publicarLocal) console.log(`  censo      publica ${publicarLocal.publicoPath} a cada ${publicarLocal.intervalMs}ms`)
   otlp.listen(portaOtlp, '127.0.0.1', () =>
     console.log(`  otlp       http://127.0.0.1:${portaOtlp}/v1/metrics`)
   )
@@ -83,6 +102,7 @@ for (const sinal of ['SIGINT', 'SIGTERM']) {
     observador.parar()
     runner.pararTudo()
     pararGit()
+    pararPublicarLocal()
     otlp.close()
     servidor.closeAllConnections()
     servidor.close(() => process.exit(0))
