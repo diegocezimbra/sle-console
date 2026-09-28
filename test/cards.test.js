@@ -81,7 +81,7 @@ test('o indice acha os cards e sabe de que coluna cada um veio', () => {
 test('o board agrupa por coluna, na ordem do pipeline', () => {
   const i = indexarCards(arvore())
   assert.deepEqual(Object.keys(i.board), [
-    'backlog', 'refinamento', 'aprovado', 'doing', 'review', 'done', 'recurring',
+    'backlog', 'refinamento', 'aprovado', 'doing', 'review', 'pendente-diego', 'done', 'recurring',
   ])
   assert.equal(i.board.doing.length, 1)
   assert.equal(i.board.backlog[0].id, 'CARD-001')

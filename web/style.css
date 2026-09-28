@@ -24,11 +24,13 @@ padding:3px 10px;border-radius:4px;cursor:pointer}
 nav button:hover{color:var(--texto)}
 nav button.ativa{color:var(--texto);border-color:var(--borda);background:var(--painel)}
 .cresce{flex:1}
-#colunas{display:grid;grid-template-columns:repeat(7,minmax(150px,1fr));gap:8px;height:100%}
+#colunas{display:grid;grid-template-columns:repeat(8,minmax(150px,1fr));gap:8px;height:100%}
 .coluna{display:flex;flex-direction:column;min-height:0}
 .coluna>h3{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--fraco);
 margin:0 0 6px;display:flex;justify-content:space-between;gap:6px;padding-bottom:4px;
 border-bottom:1px solid var(--borda)}
+/* Destaque: decisão parada só se resolve com o Diego -- a coluna precisa saltar aos olhos. */
+.coluna[data-coluna="pendente-diego"]>h3{color:var(--l2);border-bottom-color:var(--l2)}
 .coluna>div{overflow:auto;display:flex;flex-direction:column;gap:6px}
 .card{background:var(--fundo);border:1px solid var(--borda);border-left-width:3px;border-radius:4px;
 padding:8px;cursor:pointer;text-align:left;color:inherit;font:inherit;width:100%}

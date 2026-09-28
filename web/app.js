@@ -1,6 +1,8 @@
 // Tela da Fase 2: observar e ler. Nada aqui escreve no daemon.
 const CORES = { L1: '#4aa3df', L2: '#c08b3e', L3: '#7b5ec7' }
-const COLUNAS = ['backlog', 'refinamento', 'aprovado', 'doing', 'review', 'done', 'recurring']
+const COLUNAS = ['backlog', 'refinamento', 'aprovado', 'doing', 'review', 'pendente-diego', 'done', 'recurring']
+// Só a coluna de decisão do Diego precisa de rótulo -- as demais já se leem pelo próprio id.
+const ROTULOS = { 'pendente-diego': 'Pendentes do Diego' }
 const eventos = []
 let indice = { board: {}, cards: [] }
 // Projeto observado. Vai em toda chamada de leitura, para a tela nunca mostrar
@@ -193,7 +195,7 @@ function pintarBoard() {
       div.dataset.coluna = coluna
 
       const h = document.createElement('h3')
-      h.append(campo('nome', coluna), campo('qtd', String(cards.length)))
+      h.append(campo('nome', ROTULOS[coluna] ?? coluna), campo('qtd', String(cards.length)))
       const lista = document.createElement('div')
       lista.append(...cards.map(botaoDeCard))
       div.append(h, lista)
