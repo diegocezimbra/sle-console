@@ -361,8 +361,21 @@ function chip(texto) {
 }
 
 let cardAberto = null
+// De onde o modal foi aberto -- pra onde o ✕ volta. Sem isto, fechar sempre
+// caía em "/" em vez da aba (e do ?projeto=) de onde o card foi clicado.
+let origemModal = null
+
+function capturarOrigemDoModal() {
+  if (!location.pathname.startsWith('/card/')) {
+    origemModal = location.pathname + location.search
+  } else if (!origemModal) {
+    // Carregou direto em /card/<id> (link, nova guia): a origem é o Board.
+    origemModal = '/board' + location.search
+  }
+}
 
 async function abrirCard(id) {
+  capturarOrigemDoModal()
   let c = indice.cards.find((x) => x.id === id)
   if (!c) {
     try {
@@ -375,13 +388,13 @@ async function abrirCard(id) {
   }
   cardAberto = c
   document.querySelector('.modal-resposta').hidden = false
-  history.pushState({}, '', `/card/${encodeURIComponent(id)}`)
+  history.pushState({}, '', `/card/${encodeURIComponent(id)}${location.search}`)
 
   $('modal-id').textContent = c.id
   $('modal-selo').hidden = c.coluna !== 'pendente-diego'
   $('modal-selo').textContent = 'AGUARDA VOCÊ'
   $('modal-titulo').textContent = c.title ?? ''
-  $('modal-nova-guia').href = `/card/${encodeURIComponent(id)}`
+  $('modal-nova-guia').href = `/card/${encodeURIComponent(id)}${location.search}`
 
   // Só metadado preenchido vira chip -- "prioridade —" não ajuda ninguém.
   const chips = []
@@ -419,7 +432,10 @@ function fecharModal() {
   document.querySelector('.modal-resposta').hidden = false
   $('modal-card').hidden = true
   cardAberto = null
-  if (location.pathname.startsWith('/card/')) history.pushState({}, '', '/')
+  // Só mexe na URL se ela ainda for a do card -- um fechamento por popstate já
+  // chegou com a URL de destino trocada pelo próprio navegador.
+  if (location.pathname.startsWith('/card/')) history.replaceState({}, '', origemModal ?? '/board')
+  origemModal = null
 }
 
 /** Sem "A/B/C" nenhuma (só "Outra" sobra) e sem sequer as seções de decisão no
