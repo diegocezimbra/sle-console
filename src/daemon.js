@@ -77,12 +77,12 @@ export function criarDaemon({
    *  modo git. `-A` na raiz de `cards/` (ver gitSync.js) cobre tanto edição
    *  quanto mover o arquivo entre pastas de coluna (some de um lado, aparece
    *  no outro) num commit só. */
-  function commitCardNoGit(mensagem) {
+  function commitCardNoGit(mensagem, caminhosExtras = []) {
     if (!git) return { ok: true }
     const resultado = commitAndPush({
       dataDir: git.dataDir,
       keyPath: git.keyPath,
-      paths: [relative(git.dataDir, join(projeto, 'cards'))],
+      paths: [relative(git.dataDir, join(projeto, 'cards')), ...caminhosExtras],
       message: mensagem,
     })
     if (!resultado.ok) {
@@ -373,8 +373,58 @@ export function criarDaemon({
 
   const raizDeus = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
 
-  /** Acrescenta a seção de resposta ao arquivo do card e registra em jsonl —
-   *  usado tanto por "Salvar resposta" quanto por "Pendência resolvida". */
+  /** Precedência: `CONSOLE_STATE_DIR` (env) → em modo git, `<clone>/estado`
+   *  (dentro do `dataDir` que o próprio processo já sabe escrever) → senão
+   *  `<raiz local>/estado`. Em modo git a raiz calculada a partir do
+   *  arquivo-fonte (`raizDeus`) não é o clone e pode nem existir/ser
+   *  gravável (era a causa do `EACCES ... mkdir '/estado'`). */
+  function diretorioDeEstado() {
+    if (process.env.CONSOLE_STATE_DIR) return process.env.CONSOLE_STATE_DIR
+    if (git) return join(git.dataDir, 'estado')
+    return join(raizDeus, 'estado')
+  }
+
+  /** Grava a notificação para o DEUS local (`estado/respostas-diego.jsonl` +
+   *  flag). Best-effort: falha aqui vira aviso no log, nunca 500 -- a
+   *  resposta do Diego já está gravada e commitada no card antes de chegar
+   *  aqui, então perder este passo não perde dado nenhum. */
+  function gravarEstadoBestEffort(linha) {
+    try {
+      const estadoDir = diretorioDeEstado()
+      mkdirSync(estadoDir, { recursive: true })
+      appendFileSync(join(estadoDir, 'respostas-diego.jsonl'), linha + '\n')
+      writeFileSync(join(estadoDir, 'respostas-pendentes.flag'), '')
+    } catch (e) {
+      console.warn(`aviso: falha ao gravar estado/ (best-effort, resposta já commitada): ${e.message}`)
+    }
+  }
+
+  /** Em modo git, `estado/` não é versionado (gitignored no 00-DEUS) -- o
+   *  jeito do DEUS local saber da resposta é o próprio push, então ela
+   *  também vai para `respostas/YYYY-MM-DD.jsonl` DENTRO do clone, no mesmo
+   *  commit do card. Devolve o caminho relativo ao `dataDir` pra entrar em
+   *  `commitCardNoGit`, ou `null` se não deu (best-effort; o card já foi
+   *  gravado e será commitado de qualquer forma). */
+  function gravarRespostaVersionada(linha) {
+    if (!git) return null
+    try {
+      const dir = join(git.dataDir, 'respostas')
+      mkdirSync(dir, { recursive: true })
+      const arquivo = join(dir, `${new Date().toISOString().slice(0, 10)}.jsonl`)
+      appendFileSync(arquivo, linha + '\n')
+      return relative(git.dataDir, arquivo)
+    } catch (e) {
+      console.warn(`aviso: falha ao gravar respostas/ (best-effort): ${e.message}`)
+      return null
+    }
+  }
+
+  /** Acrescenta a seção de resposta ao arquivo do card -- sempre síncrono e
+   *  sem tratamento de erro aqui de propósito: se isso falhar, a resposta do
+   *  Diego não foi gravada e o chamador precisa saber (500), diferente da
+   *  notificação em `estado/` e `respostas/`, que são best-effort. Devolve a
+   *  linha jsonl (pra `estado/`) e os caminhos extras do modo git (pra
+   *  entrarem no mesmo commit do card). */
   function gravarSecaoResposta(card, opcao, texto) {
     const agora = new Date()
     const carimbo = agora.toISOString().slice(0, 16).replace('T', ' ')
@@ -389,10 +439,8 @@ export function criarDaemon({
       text: texto,
       tratada: false,
     })
-    const estadoDir = join(raizDeus, 'estado')
-    mkdirSync(estadoDir, { recursive: true })
-    appendFileSync(join(estadoDir, 'respostas-diego.jsonl'), linha + '\n')
-    writeFileSync(join(estadoDir, 'respostas-pendentes.flag'), '')
+    const respostaVersionada = gravarRespostaVersionada(linha)
+    return { linha, caminhosExtras: respostaVersionada ? [respostaVersionada] : [] }
   }
 
   function avisarTelegram(msg) {
@@ -428,14 +476,17 @@ export function criarDaemon({
     const card = indiceAtual.cards.find((c) => c.id === id) ?? achadoEmTodos(id)
     if (!card) return fim(res, 404)
 
+    let linha
     try {
-      gravarSecaoResposta(card, opcao, texto)
-      commitCardNoGit(`resposta do Diego: ${id}`)
-      avisarTelegram(`📝 Resposta do Diego em ${id}: ${opcao || '—'} — ${texto.slice(0, 200)}`)
+      const gravado = gravarSecaoResposta(card, opcao, texto)
+      linha = gravado.linha
+      commitCardNoGit(`resposta do Diego: ${id}`, gravado.caminhosExtras)
     } catch (e) {
       res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' })
       return res.end(JSON.stringify({ erro: e.message }))
     }
+    gravarEstadoBestEffort(linha)
+    avisarTelegram(`📝 Resposta do Diego em ${id}: ${opcao || '—'} — ${texto.slice(0, 200)}`)
     registrarEvento({ kind: 'card.resposta', loop: 'L3', card: id, session: null, payload: { option: opcao } })
     return json(res, { ok: true, id, option: opcao, text: texto })
   }
@@ -454,22 +505,29 @@ export function criarDaemon({
       return res.end(JSON.stringify({ erro: `card não está em pendente-diego (está em ${card.coluna})` }))
     }
     const dataHoje = new Date().toISOString().slice(0, 10)
+    let linha = null
     try {
-      if (opcao || texto) gravarSecaoResposta(card, opcao, texto)
+      let caminhosExtras = []
+      if (opcao || texto) {
+        const gravado = gravarSecaoResposta(card, opcao, texto)
+        linha = gravado.linha
+        caminhosExtras = gravado.caminhosExtras
+      }
       if (git) {
         const destino = moverArquivoDoCard(card, 'aprovado')
         appendFileSync(destino, `\n## Nota\nPendência resolvida pelo Diego (${dataHoje})\n`)
-        commitCardNoGit(`resposta do Diego: ${id}`)
+        commitCardNoGit(`resposta do Diego: ${id}`, caminhosExtras)
       } else {
         const mover = spawnSync(join(raizDeus, 'bin', 'deus'), ['task', 'move', id, 'aprovado'], { encoding: 'utf8' })
         if (mover.status !== 0) throw new Error(mover.stderr || 'falha ao mover para aprovado')
         spawnSync(join(raizDeus, 'bin', 'deus'), ['task', 'note', id, `Pendência resolvida pelo Diego (${dataHoje})`])
       }
-      avisarTelegram(`✔ Pendência resolvida em ${id}: ${opcao || '—'} — ${texto.slice(0, 200)}`)
     } catch (e) {
       res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' })
       return res.end(JSON.stringify({ erro: e.message }))
     }
+    if (linha) gravarEstadoBestEffort(linha)
+    avisarTelegram(`✔ Pendência resolvida em ${id}: ${opcao || '—'} — ${texto.slice(0, 200)}`)
     registrarEvento({ kind: 'card.resolvido', loop: 'L3', card: id, session: null, payload: { option: opcao } })
     return json(res, { ok: true, id, coluna: 'aprovado' })
   }
