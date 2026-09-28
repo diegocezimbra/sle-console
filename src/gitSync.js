@@ -57,6 +57,20 @@ export function ensureCloned({ repoUrl, dataDir, keyPath, branch = 'main' }) {
   return { ...result, cloned: result.ok }
 }
 
+/**
+ * Sets `user.name`/`user.email` on the clone if either is missing. Without
+ * them `git commit` fails outright ("Please tell me who you are") -- and
+ * that failure was exactly what made the push go silent in production: the
+ * card's answer got `git add`ed but never committed, so there was nothing
+ * new to push, and the caller had no way to tell.
+ */
+export function ensureIdentidade({ dataDir, nome = 'console', email = 'console@ohanax.com' }) {
+  const temNome = run(['config', 'user.name'], { cwd: dataDir }).stdout.trim()
+  const temEmail = run(['config', 'user.email'], { cwd: dataDir }).stdout.trim()
+  if (!temNome) run(['config', 'user.name', nome], { cwd: dataDir })
+  if (!temEmail) run(['config', 'user.email', email], { cwd: dataDir })
+}
+
 /** `--ff-only`: a fast-forward that fails means local diverged -- surface it, never merge silently. */
 export function pull({ dataDir, keyPath }) {
   return run(['pull', '--ff-only'], { cwd: dataDir, env: sshEnv(keyPath) })

@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process'
 import {
   writeDeployKey,
   ensureCloned,
+  ensureIdentidade,
   pull,
   pullRebase,
   startPullLoop,
@@ -79,6 +80,37 @@ test('pull traz um commit novo do remoto', () => {
   const r = pull({ dataDir, keyPath: '/dev/null' })
   assert.equal(r.ok, true)
   assert.equal(readFileSync(join(dataDir, 'cards', 'CARD-001.md'), 'utf8'), '# CARD-001\nresposta\n')
+})
+
+test('ensureIdentidade preenche user.name/user.email quando faltam, e commit funciona sem "Please tell me who you are"', () => {
+  const remoto = criarRemoto()
+  const dataDir = join(mkdtempSync(join(tmpdir(), 'sle-data-')), '00-deus')
+  ensureCloned({ repoUrl: remoto, dataDir, keyPath: '/dev/null', branch: 'main' })
+  // clone novo, sem identidade -- é assim que o container de produção chegou
+  // a ficar: git commit falhava com "Please tell me who you are" e o push
+  // ficava calado, mesmo com a chave de deploy funcionando.
+
+  ensureIdentidade({ dataDir })
+
+  writeFileSync(join(dataDir, 'cards', 'CARD-001.md'), '# CARD-001\nresposta\n')
+  const commit = spawnSync('git', ['commit', '-am', 'resposta'], { cwd: dataDir, encoding: 'utf8' })
+  assert.equal(commit.status, 0, commit.stderr)
+  assert.doesNotMatch(commit.stderr ?? '', /Please tell me who you are/)
+})
+
+test('ensureIdentidade nao sobrescreve identidade ja configurada', () => {
+  const remoto = criarRemoto()
+  const dataDir = join(mkdtempSync(join(tmpdir(), 'sle-data-')), '00-deus')
+  ensureCloned({ repoUrl: remoto, dataDir, keyPath: '/dev/null', branch: 'main' })
+  spawnSync('git', ['config', 'user.name', 'diego local'], { cwd: dataDir })
+  spawnSync('git', ['config', 'user.email', 'diego@ohanax.com'], { cwd: dataDir })
+
+  ensureIdentidade({ dataDir })
+
+  const nome = spawnSync('git', ['config', 'user.name'], { cwd: dataDir, encoding: 'utf8' }).stdout.trim()
+  const email = spawnSync('git', ['config', 'user.email'], { cwd: dataDir, encoding: 'utf8' }).stdout.trim()
+  assert.equal(nome, 'diego local')
+  assert.equal(email, 'diego@ohanax.com')
 })
 
 test('commitAndPush publica uma edicao local no remoto', () => {
