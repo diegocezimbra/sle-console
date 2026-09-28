@@ -10,6 +10,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { indexarCards, COLUNAS } from './cards.js'
+import { ordenarPorPrioridade } from './prioridade.js'
 import { estadoDoGit } from './repo.js'
 import { descobrirProjetos } from './projetos.js'
 
@@ -30,7 +31,7 @@ export function indexarTodos(raizes) {
       })
     }
   }
-  const board = Object.fromEntries(COLUNAS.map((c) => [c, cards.filter((x) => x.coluna === c)]))
+  const board = Object.fromEntries(COLUNAS.map((c) => [c, ordenarPorPrioridade(cards.filter((x) => x.coluna === c))]))
   return { cards, board, divergencias: [] }
 }
 

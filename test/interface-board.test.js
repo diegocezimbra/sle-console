@@ -17,6 +17,8 @@ before(async () => {
     '---\nid: CARD-042\ntitle: Token opaco com refresh\nstatus: doing\nrisk: alto\nbudget_usd: 8\n---\n\n## Requisitos\n\nR1. O sistema DEVE invalidar o refresh anterior.\n')
   writeFileSync(join(projeto, 'cards', 'backlog', 'CARD-007.md'),
     '---\nid: CARD-007\ntitle: Exportar relatorio\nstatus: backlog\nrisk: baixo\n---\ncorpo\n')
+  writeFileSync(join(projeto, 'cards', 'backlog', 'CARD-008.md'),
+    '---\nid: CARD-008\ntitle: Card urgente\nstatus: backlog\nrisk: baixo\nprioridade: urgente\n---\ncorpo\n')
 
   const d = criarDaemon({ dados: mkdtempSync(join(tmpdir(), 'sle-bd-')), projeto })
   await new Promise((r) => d.servidor.listen(0, '127.0.0.1', r))
@@ -56,6 +58,34 @@ test('risco alto e visivel sem precisar abrir o card', { skip: pular }, async ()
   const classes = await browser.avaliar(
     `document.querySelector('#tela-board [data-card="CARD-042"]').className`)
   assert.match(classes, /risco-alto/)
+})
+
+test('CARD-120: card sem prioridade mostra P3 e legado "urgente" mostra P0, ordenados na coluna', { skip: pular }, async () => {
+  const backlog = await browser.avaliar(
+    `document.querySelector('#tela-board .coluna[data-coluna="backlog"]').textContent`)
+  const posUrgente = backlog.indexOf('CARD-008')
+  const posSemP = backlog.indexOf('CARD-007')
+  assert.ok(posUrgente >= 0 && posSemP >= 0 && posUrgente < posSemP, 'P0 (urgente) vem antes de P3 (sem prioridade)')
+  const seloUrgente = await browser.avaliar(
+    `document.querySelector('#tela-board [data-card="CARD-008"] .selo-prioridade').textContent`)
+  assert.equal(seloUrgente, 'P0')
+  const seloSemP = await browser.avaliar(
+    `document.querySelector('#tela-board [data-card="CARD-007"] .selo-prioridade').textContent`)
+  assert.equal(seloSemP, 'P3')
+})
+
+test('CARD-120: filtro de prioridade esconde os cards que nao sao do P escolhido', { skip: pular }, async () => {
+  await browser.avaliar(`document.getElementById('filtro-prioridade').value = 'P0'`)
+  await browser.avaliar(`document.getElementById('filtro-prioridade').dispatchEvent(new Event('change'))`)
+  await browser.esperar(`!document.querySelector('#tela-board [data-card="CARD-007"]')`)
+  const backlog = await browser.avaliar(
+    `document.querySelector('#tela-board .coluna[data-coluna="backlog"]').textContent`)
+  assert.match(backlog, /CARD-008/)
+  assert.doesNotMatch(backlog, /CARD-007/)
+  // devolve o filtro pro estado default -- os testes seguintes contam com "todas".
+  await browser.avaliar(`document.getElementById('filtro-prioridade').value = 'todas'`)
+  await browser.avaliar(`document.getElementById('filtro-prioridade').dispatchEvent(new Event('change'))`)
+  await browser.esperar(`!!document.querySelector('#tela-board [data-card="CARD-007"]')`)
 })
 
 test('clicar num card abre a spec dele', { skip: pular }, async () => {
