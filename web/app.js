@@ -13,9 +13,19 @@ const comProjeto = (rota) =>
 
 const $ = (id) => document.getElementById(id)
 
-function mostrar(tela) {
+// As mesmas abas do nav são rotas de verdade -- refresh na aba tem que voltar
+// pra ela, não sempre pro Fluxo.
+const TELAS = ['fluxo', 'board', 'editar', 'controle', 'metricas', 'historico']
+const TELA_PADRAO = 'fluxo'
+
+function urlComProjeto(caminho) {
+  return projetoAtual ? `${caminho}?projeto=${encodeURIComponent(projetoAtual)}` : caminho
+}
+
+function mostrar(tela, { navegar = true } = {}) {
   for (const s of document.querySelectorAll('main > section')) s.hidden = s.id !== `tela-${tela}`
   for (const b of document.querySelectorAll('nav button')) b.classList.toggle('ativa', b.dataset.tela === tela)
+  if (navegar) history.pushState({}, '', urlComProjeto(`/${tela}`))
   if (tela === 'fluxo') pintarRegua()
   // Cada tela relê o disco ao ser aberta: o arquivo pode ter mudado no editor.
   if (tela === 'board') recarregarIndice()
@@ -26,6 +36,13 @@ function mostrar(tela) {
 }
 for (const b of document.querySelectorAll('nav button')) {
   b.addEventListener('click', () => mostrar(b.dataset.tela))
+}
+
+/** Aba pedida pela URL -- `/board`, `/metricas`… -- ou `null` se não é uma
+ *  dessas rotas (ex.: `/card/<id>`, que abre por cima da aba padrão). */
+function telaNaUrl() {
+  const nome = location.pathname.replace(/^\//, '')
+  return TELAS.includes(nome) ? nome : null
 }
 
 try {
@@ -48,12 +65,17 @@ try {
   document.body.dataset.pronto = 'sim'
 }
 
+// A aba vem da URL no load (F5 fica onde estava); "/card/<id>" abre o modal
+// por cima do Board, que é a aba de onde os cards se abrem.
+mostrar(telaNaUrl() ?? (idDoCardNaUrl() ? 'board' : TELA_PADRAO), { navegar: false })
 const idInicial = idDoCardNaUrl()
 if (idInicial) abrirCard(idInicial)
 window.addEventListener('popstate', () => {
   const id = idDoCardNaUrl()
   if (id) abrirCard(id)
   else fecharModal()
+  const tela = telaNaUrl()
+  if (tela) mostrar(tela, { navegar: false })
 })
 
 const stream = new EventSource('/api/stream')
@@ -110,10 +132,18 @@ async function montarSeletorDeProjetos() {
   )
   sel.addEventListener('change', async () => {
     projetoAtual = sel.value
+    history.replaceState({}, '', urlComProjeto(location.pathname))
     await recarregarIndice()
     if (!$('tela-editar').hidden) pintarArquivos()
     if (!$('tela-controle').hidden) pintarControle()
   })
+  // F5 na URL com ?projeto=... sobrevive: a querystring vence o default do
+  // servidor, senão trocar de aba sempre voltava pro primeiro projeto.
+  const pedido = new URL(location.href).searchParams.get('projeto')
+  if (pedido && [...sel.options].some((o) => o.value === pedido)) {
+    projetoAtual = pedido
+    sel.value = pedido
+  }
 }
 
 function pintarContadores(c) {

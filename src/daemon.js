@@ -88,10 +88,11 @@ export function criarDaemon({ dados, projeto = process.cwd(), raiz = null, tetoD
     }
     const git = async () => (todos ? gitDeTodosAsync(raiz) : estadoDoGit(alvo))
 
-    // Rota amigável do card: serve o mesmo index.html, o app.js decide pelo
-    // pathname se abre o modal — sem isso Ctrl+clique/abrir em guia nova cai
-    // num 404 em vez de reabrir a tela no card certo.
-    if (req.method === 'GET' && /^\/card\/[^/]+$/.test(rota)) {
+    // Rotas amigáveis do card e das abas: servem o mesmo index.html, o app.js
+    // decide pelo pathname o que mostrar — sem isso Ctrl+clique/abrir em guia
+    // nova, ou um F5 na aba certa, caem num 404 em vez de reabrir no lugar certo.
+    const ABAS = ['fluxo', 'board', 'editar', 'controle', 'metricas', 'historico']
+    if (req.method === 'GET' && (/^\/card\/[^/]+$/.test(rota) || ABAS.includes(rota.slice(1)))) {
       try {
         const corpo = readFileSync(join(WEB, 'index.html'))
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
