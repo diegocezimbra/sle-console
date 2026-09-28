@@ -164,6 +164,44 @@ test('answer em modo git responde 200 mesmo sem permissão de escrita em estado 
   }
 })
 
+test('answer em modo git responde sync:"pendente" quando o push falha, sem fingir sucesso', async () => {
+  const { base, fechar, dataDir } = await subirEmModoGit()
+  // deploy key/remoto inalcançável -- reproduz o push que falha calado em produção
+  git(['remote', 'set-url', 'origin', join(tmpdir(), 'remoto-inexistente-xyz')], dataDir)
+
+  const r = await fetch(`${base}/api/cards/CARD-001/answer`, {
+    method: 'POST',
+    body: JSON.stringify({ option: 'A', text: 'segue com a opção A' }),
+  })
+  assert.equal(r.status, 200)
+  const corpo = await r.json()
+  assert.equal(corpo.sync, 'pendente')
+
+  // a resposta continua gravada em disco mesmo com o push falho
+  const conteudo = readFileSync(join(dataDir, 'cards', 'pendente-diego', 'CARD-001.md'), 'utf8')
+  assert.match(conteudo, /Resposta do Diego/)
+  await fechar()
+})
+
+test('resolve em modo git responde sync:"pendente" quando o push falha', async () => {
+  const { base, fechar, dataDir } = await subirEmModoGit()
+  git(['remote', 'set-url', 'origin', join(tmpdir(), 'remoto-inexistente-xyz')], dataDir)
+
+  const r = await fetch(`${base}/api/cards/CARD-001/resolve`, {
+    method: 'POST',
+    body: JSON.stringify({ option: 'A', text: 'resolvido' }),
+  })
+  assert.equal(r.status, 200)
+  const corpo = await r.json()
+  assert.equal(corpo.sync, 'pendente')
+  assert.equal(corpo.coluna, 'aprovado')
+
+  // moveu localmente pra aprovado mesmo sem conseguir empurrar
+  const caminhoAprovado = join(dataDir, 'cards', 'aprovado', 'CARD-001.md')
+  assert.equal(existsSync(caminhoAprovado), true)
+  await fechar()
+})
+
 test('move em modo git também empurra pro remoto', async () => {
   const { base, fechar, remoto } = await subirEmModoGit()
   const r = await fetch(`${base}/api/cards/CARD-001/move`, {

@@ -8,6 +8,7 @@ import {
   writeDeployKey,
   ensureCloned,
   pull,
+  pullRebase,
   startPullLoop,
   commitAndPush,
 } from '../src/gitSync.js'
@@ -101,6 +102,99 @@ test('commitAndPush publica uma edicao local no remoto', () => {
   assert.equal(
     readFileSync(join(verificacao, 'cards', 'CARD-001.md'), 'utf8'),
     '# CARD-001\nresposta do Diego\n'
+  )
+})
+
+test('commitAndPush com push que falha devolve stderr legivel do git (chave invalida)', () => {
+  const remoto = criarRemoto()
+  const dataDir = join(mkdtempSync(join(tmpdir(), 'sle-data-')), '00-deus')
+  ensureCloned({ repoUrl: remoto, dataDir, keyPath: '/dev/null', branch: 'main' })
+  git(['config', 'user.email', 'console@example.com'], dataDir)
+  git(['config', 'user.name', 'console'], dataDir)
+  // remote inexistente -- simula push que falha (deploy key sem permissao, host fora do ar etc)
+  git(['remote', 'set-url', 'origin', join(tmpdir(), 'sle-remoto-inexistente-xyz')], dataDir)
+
+  writeFileSync(join(dataDir, 'cards', 'CARD-001.md'), '# CARD-001\nresposta do Diego\n')
+  const r = commitAndPush({
+    dataDir,
+    keyPath: '/dev/null',
+    paths: ['cards/CARD-001.md'],
+    message: 'resposta do Diego: CARD-001',
+  })
+  assert.equal(r.ok, false)
+  assert.ok(r.stderr && r.stderr.length > 0, 'stderr do git deve vir preenchido e legivel')
+
+  // o commit local aconteceu mesmo com o push falho -- nada se perde no disco
+  const log = spawnSync('git', ['log', '-1', '--format=%s'], { cwd: dataDir, encoding: 'utf8' }).stdout
+  assert.match(log, /resposta do Diego: CARD-001/)
+})
+
+test('pullRebase reenvia pull --rebase e, em conflito, aborta sem perder o commit local', () => {
+  const remoto = criarRemoto()
+  const dataDir = join(mkdtempSync(join(tmpdir(), 'sle-data-')), '00-deus')
+  ensureCloned({ repoUrl: remoto, dataDir, keyPath: '/dev/null', branch: 'main' })
+  git(['config', 'user.email', 'console@example.com'], dataDir)
+  git(['config', 'user.name', 'console'], dataDir)
+
+  // outro escritor (o Diego local) empurra uma mudanca conflitante na mesma linha
+  const outro = mkdtempSync(join(tmpdir(), 'sle-outro-'))
+  git(['clone', remoto, outro])
+  git(['config', 'user.email', 'x@example.com'], outro)
+  git(['config', 'user.name', 'x'], outro)
+  writeFileSync(join(outro, 'cards', 'CARD-001.md'), '# CARD-001\ndo diego local\n')
+  git(['add', 'cards/CARD-001.md'], outro)
+  git(['commit', '-m', 'do diego local'], outro)
+  git(['push'], outro)
+
+  // commit local pendente, conflitante com o que acabou de subir
+  writeFileSync(join(dataDir, 'cards', 'CARD-001.md'), '# CARD-001\nda nuvem\n')
+  git(['add', 'cards/CARD-001.md'], dataDir)
+  git(['commit', '-m', 'da nuvem'], dataDir)
+
+  const antes = spawnSync('git', ['log', '-1', '--format=%H'], { cwd: dataDir, encoding: 'utf8' }).stdout.trim()
+
+  const r = pullRebase({ dataDir, keyPath: '/dev/null' })
+  assert.equal(r.ok, false)
+  assert.equal(r.conflito, true)
+
+  // o rebase foi abortado -- sem rebase em andamento e sem perder o commit local
+  const status = spawnSync('git', ['status', '--porcelain=v2'], { cwd: dataDir, encoding: 'utf8' }).stdout
+  assert.doesNotMatch(status, /rebase/)
+  const depois = spawnSync('git', ['log', '-1', '--format=%H'], { cwd: dataDir, encoding: 'utf8' }).stdout.trim()
+  assert.equal(depois, antes, 'commit local pendente precisa continuar no HEAD apos o abort')
+})
+
+test('startPullLoop empurra o push pendente ANTES de cada pull do intervalo', async () => {
+  const remoto = criarRemoto()
+  const dataDir = join(mkdtempSync(join(tmpdir(), 'sle-data-')), '00-deus')
+  ensureCloned({ repoUrl: remoto, dataDir, keyPath: '/dev/null', branch: 'main' })
+  git(['config', 'user.email', 'console@example.com'], dataDir)
+  git(['config', 'user.name', 'console'], dataDir)
+
+  // commit local que ainda nao foi empurrado (simula push original que falhou calado)
+  writeFileSync(join(dataDir, 'cards', 'CARD-001.md'), '# CARD-001\npendente de push\n')
+  git(['add', 'cards/CARD-001.md'], dataDir)
+  git(['commit', '-m', 'pendente de push'], dataDir)
+
+  let chamadasPush = 0
+  const loop = startPullLoop({
+    dataDir,
+    keyPath: '/dev/null',
+    intervalMs: 20,
+    onPushResult: (r) => {
+      chamadasPush++
+      assert.equal(r.ok, true)
+    },
+  })
+  await new Promise((r) => setTimeout(r, 60))
+  loop.stop()
+  assert.ok(chamadasPush >= 1)
+
+  const verificacao = mkdtempSync(join(tmpdir(), 'sle-verifica-'))
+  git(['clone', remoto, verificacao])
+  assert.equal(
+    readFileSync(join(verificacao, 'cards', 'CARD-001.md'), 'utf8'),
+    '# CARD-001\npendente de push\n'
   )
 })
 
