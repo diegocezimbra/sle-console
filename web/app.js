@@ -220,8 +220,13 @@ function botaoDeCard(c) {
   b.className = `card risco-${c.risk ?? 'baixo'}`
   b.dataset.card = c.id
   // Na visão de todos, o card diz de que projeto veio.
-  b.append(campo('cid', c.rotuloProjeto ? `${c.rotuloProjeto} · ${c.id}` : c.id),
-           campo('titulo', c.title ?? ''))
+  const filhos = []
+  if (c.coluna === 'pendente-diego') filhos.push(campo('selo-decisao', 'AGUARDA VOCÊ'))
+  filhos.push(
+    campo('cid', c.rotuloProjeto ? `${c.rotuloProjeto} · ${c.id}` : c.id),
+    campo('titulo', c.title ?? '')
+  )
+  b.append(...filhos)
   b.addEventListener('click', (ev) => {
     if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button === 1) return
     ev.preventDefault()

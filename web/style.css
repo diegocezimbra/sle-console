@@ -24,27 +24,44 @@ padding:3px 10px;border-radius:4px;cursor:pointer}
 nav button:hover{color:var(--texto)}
 nav button.ativa{color:var(--texto);border-color:var(--borda);background:var(--painel)}
 .cresce{flex:1}
-#colunas{display:grid;grid-template-columns:repeat(8,minmax(150px,1fr));gap:8px;height:100%}
-.coluna{display:flex;flex-direction:column;min-height:0}
+/* A coluna larga rola dentro de si (overflow-x no container), nunca a página
+   inteira -- por isso minmax parte de 280px em vez de encolher sem piso. */
+#colunas{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(280px,1fr);gap:8px;
+height:100%;overflow-x:auto}
+.coluna{display:flex;flex-direction:column;min-height:0;min-width:280px}
 .coluna>h3{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--fraco);
 margin:0 0 6px;display:flex;justify-content:space-between;gap:6px;padding-bottom:4px;
 border-bottom:1px solid var(--borda)}
 /* Destaque: decisão parada só se resolve com o Diego -- a coluna precisa saltar aos olhos. */
 .coluna[data-coluna="pendente-diego"]>h3{color:var(--l2);border-bottom-color:var(--l2)}
-.coluna>div{overflow:auto;display:flex;flex-direction:column;gap:6px}
+.coluna>div{overflow:auto;display:flex;flex-direction:column;gap:8px}
+/* O card é um <a> por baixo (nova guia funciona sem JS), mas não pode SE LER
+   como link: sem cor de link, sem sublinhado, texto no tom normal da tela. */
 .card{background:var(--fundo);border:1px solid var(--borda);border-left-width:3px;border-radius:4px;
-padding:8px;cursor:pointer;text-align:left;color:inherit;font:inherit;width:100%}
-.card:hover{border-color:var(--l1)}
-.card .cid{color:var(--fraco);font-size:11px;display:block;margin-bottom:3px}
-.card .titulo{display:block;line-height:1.35}
+padding:12px;cursor:pointer;text-align:left;color:var(--texto);font:13px/1.4 -apple-system,
+'Segoe UI',Roboto,Inter,sans-serif;width:100%;display:block;text-decoration:none;
+transition:border-color .12s,transform .12s}
+.card:hover,.card:focus-visible{border-color:var(--l1);text-decoration:none;transform:translateY(-1px)}
+.card:visited{color:var(--texto)}
+.card .cid{color:var(--fraco);font-size:11px;display:block;margin-bottom:4px;
+font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;text-decoration:none}
+.card .titulo{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;
+font-size:14px;font-weight:600;line-height:1.35;color:var(--texto)}
 .card.risco-alto{border-left-color:var(--erro)}
 .card.risco-medio{border-left-color:var(--l2)}
 .card.risco-baixo{border-left-color:var(--ok)}
+/* Selo da coluna do Diego -- diz "precisa de você" sem repetir isso no título
+   de cada card, um por um. */
+.card .selo-decisao{display:inline-block;margin-bottom:6px;padding:1px 8px;border-radius:999px;
+font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+color:var(--fundo);background:var(--l2)}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;
 justify-content:center;z-index:50}
 .modal-overlay[hidden]{display:none}
 .modal-caixa{background:var(--painel);border:1px solid var(--borda);border-radius:6px;max-width:640px;
-width:90%;max-height:85vh;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
+width:90%;max-height:85vh;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:10px;
+font-family:-apple-system,'Segoe UI',Roboto,Inter,sans-serif}
+.modal-topo h3{font-family:inherit}
 .modal-topo{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .modal-topo h3{margin:0;font-size:15px}
 .modal-acoes{display:flex;gap:10px;align-items:center;font-size:12px}
