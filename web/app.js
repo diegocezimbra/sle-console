@@ -3,6 +3,9 @@ import { pintarCredenciais as pintarFormularioCredenciais } from '/credenciais.j
 const CORES = { L1: '#4aa3df', L2: '#c08b3e', L3: '#7b5ec7' }
 const COLUNAS = ['backlog', 'pendente-diego', 'refinamento', 'aprovado', 'doing', 'review', 'testando', 'done', 'recurring']
 // Só a coluna de decisão do Diego precisa de rótulo -- as demais já se leem pelo próprio id.
+// Ordem de EXIBICAO (a mesma do `deus task board`); COLUNAS acima e a ordem de
+// movimento das setas. Lista fixa: coluna vazia continua na tela, com 0.
+const ORDEM_DO_BOARD = ['backlog', 'refinamento', 'aprovado', 'doing', 'review', 'testando', 'done', 'pendente-diego', 'recurring']
 const ROTULOS = { 'pendente-diego': 'Pendentes do Diego', testando: 'Testando' }
 const eventos = []
 // IDs das sessões ativas na última pintura -- a régua usa pra saber que
@@ -351,7 +354,7 @@ function pintarBoard() {
   montarFiltroPrioridade()
   const passaNoFiltro = (c) => filtroPrioridade.size === 0 || filtroPrioridade.has(c.prioridade ?? 'P3')
   $('colunas').replaceChildren(
-    ...COLUNAS.map((coluna) => {
+    ...ORDEM_DO_BOARD.map((coluna) => {
       const cards = (indice.board?.[coluna] ?? []).filter(passaNoFiltro)
       const div = document.createElement('div')
       div.className = 'coluna'

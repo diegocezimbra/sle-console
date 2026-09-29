@@ -34,9 +34,10 @@ nav button.ativa{color:var(--texto);border-color:var(--borda);background:var(--p
 height:100%;overflow-x:auto}
 .coluna{display:flex;flex-direction:column;min-height:0;min-width:280px}
 .coluna>h3{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--fraco);
-margin:0 0 6px;display:flex;justify-content:space-between;gap:6px;padding-bottom:4px;
+margin:0 0 6px;display:flex;justify-content:flex-start;align-items:baseline;gap:8px;padding-bottom:4px;
 border-bottom:1px solid var(--borda)}
 /* Destaque: decisão parada só se resolve com o Diego -- a coluna precisa saltar aos olhos. */
+.coluna>h3 .qtd{font-weight:700;color:var(--texto);border:1px solid var(--borda);border-radius:8px;padding:0 6px}
 .coluna[data-coluna="pendente-diego"]>h3{color:var(--l2);border-bottom-color:var(--l2)}
 /* Testando: teste funcional em producao -- cor propria, distinta de review e do destaque do Diego. */
 .coluna[data-coluna="testando"]>h3{color:var(--l3);border-bottom-color:var(--l3)}
