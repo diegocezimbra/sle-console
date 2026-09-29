@@ -67,7 +67,7 @@ html[data-modo="mobile"] #m-app { display: flex; flex-direction: column; height:
 .m-badge { position: absolute; top: 4px; left: calc(50% + 8px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; background: var(--m-accent); color: var(--m-accent-ink); }
 .m-badge[data-badge="pending"] { background: var(--m-warn); color: var(--m-warn-ink); }
 .m-badge[data-badge="board"] { background: var(--m-muted); color: var(--m-bg); }
-.m-toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--m-tab-h) + env(safe-area-inset-bottom) + 12px); max-width: calc(100% - 32px); padding: 10px 16px; border-radius: 999px; background: var(--m-text); color: var(--m-bg); font: 600 15px/1.2 var(--m-font); z-index: 20; box-shadow: 0 8px 24px rgba(0, 0, 0, .35); }
+.m-toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--m-tab-h) + env(safe-area-inset-bottom) + 12px); max-width: calc(100% - 32px); padding: 10px 16px; border-radius: 999px; background: var(--m-text); color: var(--m-bg); font: 600 15px/1.2 var(--m-font); z-index: 40; box-shadow: 0 8px 24px rgba(0, 0, 0, .35); }
 
 /* Etiquetas */
 .m-chip { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 700; line-height: 1.4; white-space: nowrap; }
@@ -184,3 +184,74 @@ html[data-modo="mobile"] #m-app { display: flex; flex-direction: column; height:
 .m-search { position: sticky; top: 0; z-index: 2; margin: -12px -12px 0; padding: 12px; background: var(--m-bg); }
 .m-search-input { width: 100%; min-height: 48px; padding: 0 14px; border: 1px solid var(--m-border); border-radius: 12px; background: var(--m-surface); color: var(--m-text); font: 16px/1.2 var(--m-font); -webkit-appearance: none; appearance: none; }
 .m-search-status { min-height: 20px; margin: 8px 2px 10px; color: var(--m-muted); font-size: 14px; }
+
+/* Titulo do card e id em Pendentes viram link (clique comum abre o card por dentro do app) */
+.m-title-link { display: block; min-height: 44px; color: inherit; text-decoration: none; }
+.m-pend .m-id { display: inline-flex; align-items: center; }
+
+/* Card em tela cheia: camada por cima do app, com topo, corpo que rola e rodape fixo */
+#m-card { display: none; }
+html[data-modo="mobile"] #m-card:not([hidden]) { position: fixed; inset: 0; z-index: 25; display: flex; flex-direction: column; background: var(--m-bg); color: var(--m-text); font: 16px/1.5 var(--m-font); }
+.m-card-top { flex: none; display: flex; align-items: center; gap: 8px; padding: calc(6px + env(safe-area-inset-top)) 12px 6px 6px; background: var(--m-bg); border-bottom: 1px solid var(--m-border); }
+.m-back { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; border: 0; border-radius: 12px; background: none; color: var(--m-text); cursor: pointer; }
+.m-back svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.m-card-topid { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--m-muted); font: 600 14px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.m-card-body { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 16px 16px 28px; }
+.m-card-title { margin: 0; font-size: 20px; line-height: 1.3; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--m-text); overflow-wrap: anywhere; outline: none; }
+.m-card-title-wrap { margin: 0 0 12px; }
+.m-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 16px; }
+.m-risk[data-risk="alto"] { background: var(--m-danger); color: #fff; }
+.m-risk { background: var(--m-surface-2); border: 1px solid var(--m-border); color: var(--m-muted); }
+.m-alert { margin: 0 0 16px; padding: 10px 12px; border: 1px solid var(--m-warn); border-radius: 10px; background: var(--m-surface-2); color: var(--m-text); font-size: 15px; }
+.m-h2 { margin: 0 0 8px; font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--m-muted); }
+.m-h3 { margin: 14px 0 6px; font-size: 14px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--m-text); }
+.m-question-box { margin: 0 0 16px; padding: 12px 14px; border: 1px solid var(--m-warn); border-radius: 12px; background: var(--m-surface); }
+.m-question-text { margin: 0; font-size: 16px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.m-answer-box { display: flex; flex-direction: column; gap: 10px; margin: 0 0 20px; }
+.m-answer-box .m-opt[aria-pressed="true"] { background: var(--m-accent); color: var(--m-accent-ink); }
+.m-answer-text { display: block; width: 100%; min-height: 168px; padding: 12px 14px; border: 1px solid var(--m-border); border-radius: 12px; background: var(--m-surface); color: var(--m-text); font: 16px/1.45 var(--m-font); resize: vertical; }
+.m-prev { margin: 0 0 20px; }
+.m-prev-item { display: flex; flex-direction: column; gap: 2px; margin: 0 0 10px; padding-left: 12px; border-left: 3px solid var(--m-warn); overflow-wrap: anywhere; white-space: pre-wrap; }
+.m-prev-item b { color: var(--m-muted); font-size: 13px; font-weight: 600; }
+.m-muted { color: var(--m-muted); }
+
+/* Dados e Atividades da IA: recolhidas */
+.m-fold { margin: 0 0 12px; border: 1px solid var(--m-border); border-radius: 12px; background: var(--m-surface); }
+.m-fold > summary { display: flex; align-items: center; justify-content: space-between; min-height: 52px; padding: 0 16px; font-size: 16px; font-weight: 700; cursor: pointer; list-style: none; }
+.m-fold > summary::-webkit-details-marker { display: none; }
+.m-fold > summary::after { content: "+"; color: var(--m-accent); font-size: 22px; font-weight: 500; }
+.m-fold[open] > summary::after { content: "−"; }
+.m-fold-body { padding: 4px 16px 16px; overflow-wrap: anywhere; }
+.m-meta { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0 0 12px; font-size: 14px; }
+.m-meta dt { color: var(--m-muted); }
+.m-meta dd { margin: 0; overflow-wrap: anywhere; }
+.m-md { font-size: 15px; line-height: 1.55; }
+.m-md p { margin: 0 0 8px; }
+.m-md h2 { margin: 16px 0 6px; font-size: 16px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--m-text); }
+.m-md h3, .m-md h4 { margin: 12px 0 6px; font-size: 15px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--m-text); }
+.m-md ul { margin: 0 0 8px; padding-left: 20px; list-style: disc; }
+.m-md li { margin: 0 0 4px; }
+.m-md code { padding: 1px 5px; border: 1px solid var(--m-border); border-radius: 4px; background: var(--m-surface-2); font: .9em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+.m-md .bloco-decisao { margin: 12px 0; padding: 10px 12px; border: 1px solid var(--m-warn); border-radius: 10px; }
+.m-md .cartoes-opcao { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.m-md .cartao-opcao { min-height: 44px; padding: 8px 12px; border: 1px solid var(--m-border); border-radius: 10px; background: var(--m-surface-2); color: var(--m-text); font: inherit; text-align: left; }
+.m-cred-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; padding: 0; list-style: none; }
+.m-cred-list li { display: flex; gap: 8px; padding: 2px 8px; border: 1px solid var(--m-border); border-radius: 6px; font-size: 13px; }
+.m-cred-list li[data-status="ausente"] span { color: var(--m-warn); }
+.m-cred-list li[data-status="preenchida"] span { color: var(--m-ok); }
+.m-card .modal-cred-form { margin: 12px 0 0; padding: 12px; border: 1px solid var(--m-border); border-radius: 10px; }
+.m-card .modal-cred-form h3 { margin: 0 0 8px; font-size: 15px; letter-spacing: 0; text-transform: none; color: var(--m-text); }
+.m-card .cred-form { flex-wrap: wrap; }
+.m-card .cred-valor { min-height: 48px; font-size: 16px; padding: 0 12px; border: 1px solid var(--m-border); border-radius: 10px; background: var(--m-bg); color: var(--m-text); }
+.m-card .botao-secundario { display: inline-flex; align-items: center; min-height: 48px; padding: 0 16px; border: 1.5px solid var(--m-accent); border-radius: 10px; background: transparent; color: var(--m-accent); font: 600 15px var(--m-font); }
+.m-activity { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.m-activity li { display: flex; flex-direction: column; gap: 2px; padding-left: 12px; border-left: 3px solid var(--m-border); font-size: 14px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.m-activity time { color: var(--m-muted); font-size: 12px; font-weight: 600; }
+
+/* Rodape fixo: Responder (e Resolvida nos pendentes) */
+.m-card-foot { flex: none; display: flex; gap: 10px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--m-border); background: var(--m-surface); }
+.m-respond { flex: 2; min-height: 52px; border: 0; border-radius: 14px; background: var(--m-accent); color: var(--m-accent-ink); font: 700 17px/1 var(--m-font); cursor: pointer; }
+.m-resolve { flex: 1; min-height: 52px; border: 1.5px solid var(--m-ok); border-radius: 14px; background: transparent; color: var(--m-ok); font: 700 15px/1.1 var(--m-font); cursor: pointer; }
+.m-respond:disabled, .m-resolve:disabled { opacity: .55; }
+/* Com o card aberto o aviso sobe acima do rodape fixo dele */
+html[data-card-open] .m-toast { bottom: calc(84px + env(safe-area-inset-bottom)); }

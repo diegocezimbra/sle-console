@@ -79,6 +79,16 @@ test('busca sem termo devolve lista vazia', async () => {
   assert.deepEqual((await (await get('/api/search?q=')).json()).results, [])
 })
 
+test('o card completo traz a pergunta e as notas ja interpretadas (a tela do celular nao reparseia texto)', async () => {
+  const c = await (await get('/api/cards/CARD-900')).json()
+  assert.deepEqual(c.question.options, ['chave S3', 'ignorar'])
+  assert.equal(c.question.source, 'note')
+  assert.equal(c.notes.length, 1)
+  assert.equal(c.notes[0].ts, '2026-09-29T11:37:14Z')
+  assert.match(c.notes[0].text, /^PERGUNTA \(Diego\)/)
+  assert.ok(c.opcoes.includes('Outra'), 'o campo opcoes do desktop continua')
+})
+
 test('as telas do celular (/pending, /board, /search) abrem o mesmo index.html', async () => {
   for (const rota of ['/pending', '/board', '/search', '/card/CARD-901']) {
     const r = await get(rota)

@@ -18,7 +18,7 @@
 (function () {
   var query = matchMedia('(max-width: 767px), (pointer: coarse) and (max-height: 500px)')
   var forceDesktop = /[?&]desktop=1\b/.test(location.search)
-  function decide() { return query.matches && !forceDesktop && location.pathname.indexOf('/card/') !== 0 }
+  function decide() { return query.matches && !forceDesktop }
   var mobile = decide()
   document.documentElement.dataset.modo = mobile ? 'mobile' : 'desktop'
   if (mobile) {
@@ -187,7 +187,8 @@
   <p id="m-offline" class="m-offline" role="status" hidden>Sem conexão: mostrando o último estado.</p>
   <div id="m-screen" class="m-screen" role="main" tabindex="-1"></div>
   <div id="m-tabs" class="m-tabs"></div>
-  <div id="m-toast" class="m-toast" role="status" aria-live="polite" hidden></div>
 </div>
+<div id="m-card" class="m-card" hidden></div>
+<div id="m-toast" class="m-toast" role="status" aria-live="polite" hidden></div>
 </body>
 </html>

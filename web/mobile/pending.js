@@ -1,28 +1,13 @@
 // Aba Pendentes: os cards em `pendente-diego` por prioridade, cada um com a pergunta e um
 // botao por opcao. Tocar numa opcao ja registra a resposta (mesmo caminho do desktop).
 import { answerCard } from './api.js'
+import { clampedText } from './clamp.js'
 import { formatWhen, h, reconcile } from './dom.js'
 import { priorityChip, priorityTone } from './priority.js'
 import { column, refresh, state, subscribe } from './store.js'
 
 /** "perdoa <ids>" e "outra" pedem texto: o toque prepara o campo em vez de enviar sozinho. */
 const NEEDS_TEXT = /<[^>]+>|^outr[ao]s?\b/i
-
-/** Texto longo cortado em N linhas; "ver mais" so aparece se de fato cortou. */
-function clampedText(tag, className, text, lines, { toggle = true } = {}) {
-  const body = h(tag, { class: `${className} m-clamp`, style: `--lines:${lines}` }, text)
-  if (!toggle) return h('div', { class: `m-clamp-wrap ${className}-wrap` }, body)
-  const more = h('button', { type: 'button', class: 'm-more', hidden: true, 'aria-expanded': 'false' }, 'ver mais')
-  more.addEventListener('click', () => {
-    const open = body.classList.toggle('open')
-    more.setAttribute('aria-expanded', String(open))
-    more.textContent = open ? 'ver menos' : 'ver mais'
-  })
-  new ResizeObserver(() => {
-    more.hidden = !body.classList.contains('open') && body.scrollHeight <= body.clientHeight + 1
-  }).observe(body)
-  return h('div', { class: `m-clamp-wrap ${className}-wrap` }, body, more)
-}
 
 function answeredView(card, answered, onAgain) {
   const what = [answered.option, answered.text].filter(Boolean).join(' — ')
@@ -85,7 +70,20 @@ function answerForm(card, options, toast) {
   return form
 }
 
-function buildItem(card, toast) {
+/** Link para o card: clique comum abre por dentro do app (sem recarregar); o resto segue como link normal. */
+function cardLink(card, className, content, openCard) {
+  const link = h('a', { class: className, href: `/card/${encodeURIComponent(card.id)}` }, content)
+  if (openCard) {
+    link.addEventListener('click', (event) => {
+      if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
+      event.preventDefault()
+      openCard(card.id)
+    })
+  }
+  return link
+}
+
+function buildItem(card, toast, openCard) {
   const q = card.question ?? { text: null, options: [], source: null, answered: null }
   // Quando a pergunta E o titulo (o DEUS escreve assim), o titulo mostra mais linhas: sem
   // o contexto na tela, as opcoes ("corta no deploy") nao dizem o que vao fazer.
@@ -97,11 +95,11 @@ function buildItem(card, toast) {
   // `append(null)` escreveria a palavra "null": os filhos opcionais passam por `h`, que os descarta.
   return h('li', { class: 'm-pend', dataset: { card: card.id, tone: priorityTone(card.prioridade) } },
     h('div', { class: 'm-pend-meta' },
-      h('a', { class: 'm-id', href: `/card/${encodeURIComponent(card.id)}` }, card.id),
+      cardLink(card, 'm-id', card.id, openCard),
       priorityChip(card.prioridade, { withLabel: true }),
       card.projectLabel ? h('span', { class: 'm-proj' }, card.projectLabel) : null),
     // Com a pergunta numa caixa propria, o titulo e so contexto: 2 linhas, sem "ver mais".
-    clampedText('h2', 'm-pend-title', card.title ?? '', titleLines, { toggle: !q.text }),
+    clampedText('h2', 'm-pend-title', cardLink(card, 'm-title-link', card.title ?? '', openCard), titleLines, { toggle: !q.text }),
     q.text ? clampedText('p', 'm-question', q.text, 5) : null,
     controls)
 }
@@ -112,7 +110,7 @@ function skeleton() {
   return h('div', { class: 'm-skeleton', 'aria-hidden': 'true' }, ...[0, 1, 2].map(() => h('div', { class: 'm-skel-card' })))
 }
 
-export function mountPending(root, { toast }) {
+export function mountPending(root, { toast, openCard }) {
   const list = h('ul', { class: 'm-list', 'aria-label': 'Cards esperando você' })
   const empty = h('div', { class: 'm-empty', hidden: true },
     h('p', { class: 'm-empty-title' }, 'Nada esperando por você'),
@@ -129,7 +127,7 @@ export function mountPending(root, { toast }) {
     failed.hidden = state.loaded || !state.offline
     list.hidden = cards.length === 0
     empty.hidden = !state.loaded || cards.length > 0
-    reconcile(list, cards, { key: (c) => c.id, signature, create: (c) => buildItem(c, toast) })
+    reconcile(list, cards, { key: (c) => c.id, signature, create: (c) => buildItem(c, toast, openCard) })
   }
   const unsubscribe = subscribe(render)
   render()

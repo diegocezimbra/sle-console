@@ -29,6 +29,7 @@ import { extrairMedidas } from './otel.js'
 import { COLUNAS, lerCard } from './cards.js'
 import { createChatRoutes } from './chat-routes.js'
 import { createMobileRoutes } from './mobile-routes.js'
+import { extractQuestion, parseNotes } from './question.js'
 import { createStaticFiles } from './static-files.js'
 import { descobrirProjetos, invalidarCache, resolverProjeto } from './projetos.js'
 import {
@@ -456,7 +457,10 @@ export function criarDaemon({
       // sem isso o modal trava sempre que o seletor está num projeto que não
       // é o dono do card.
       const achado = indice().cards.find((c) => c.id === id) ?? achadoEmTodos(id)
-      return achado ? json(res, { ...achado, opcoes: [...opcoesDoCard(achado.corpo ?? ''), 'Outra'] }) : fim(res, 404)
+      // `question` e `notes` (CARD-094): a tela do celular recebe a pergunta e a linha do tempo prontas.
+      return achado
+        ? json(res, { ...achado, opcoes: [...opcoesDoCard(achado.corpo ?? ''), 'Outra'], question: extractQuestion(achado), notes: parseNotes(achado.corpo) })
+        : fim(res, 404)
     }
     if (rota === '/api/git/tree') return git().then((g) => json(res, g))
     if (rota === '/api/git/log') return exigeProjeto() ? undefined : json(res, historico(alvo))

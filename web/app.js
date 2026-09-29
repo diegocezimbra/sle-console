@@ -1,5 +1,6 @@
 // Tela da Fase 2: observar e ler. Nada aqui escreve no daemon.
 import { pintarCredenciais as pintarFormularioCredenciais } from '/credenciais.js'
+import { markdownSeguro, semSecaoDeCredenciais } from '/card-md.js'
 const CORES = { L1: '#4aa3df', L2: '#c08b3e', L3: '#7b5ec7' }
 const COLUNAS = ['backlog', 'pendente-diego', 'refinamento', 'aprovado', 'doing', 'review', 'testando', 'done', 'recurring']
 // Só a coluna de decisão do Diego precisa de rótulo -- as demais já se leem pelo próprio id.
@@ -431,65 +432,6 @@ function botaoDeCard(c) {
   return b
 }
 
-function inline(s) {
-  return s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>')
-}
-
-/** Escapa e converte um subconjunto simples de markdown -- títulos, listas,
- *  negrito, código inline. `## Opções` vira cartões clicáveis (A/B/C…), e
- *  esses cartões mais "decidir"/"recomendação" ficam num bloco em destaque:
- *  é a única pergunta que o Diego veio ao modal para responder. */
-function markdownSeguro(texto) {
-  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  const linhas = esc(texto).split('\n')
-  const html = []
-  let listaAberta = false
-  let opcoesAbertas = false
-  let decisaoAberta = false
-  let emSecaoOpcoes = false
-
-  const fecharLista = () => { if (listaAberta) { html.push('</ul>'); listaAberta = false } }
-  const fecharOpcoes = () => { if (opcoesAbertas) { html.push('</div>'); opcoesAbertas = false } }
-
-  for (const linha of linhas) {
-    const titulo = /^(#{1,6})\s+(.*)$/.exec(linha)
-    // O card real escreve "- A: texto" (lista com dois-pontos), não "A) texto".
-    const itemOpcao = emSecaoOpcoes && /^-?\s*([A-Z])[):]\s*(.*)$/.exec(linha)
-    const item = !itemOpcao && /^[-*]\s+(.*)$/.exec(linha)
-
-    if (titulo) {
-      fecharLista()
-      fecharOpcoes()
-      const textoTitulo = titulo[2]
-      const ehDecisao = /decidir|op[cç][aã]o|op[cç][ãõo]es|recomenda/i.test(textoTitulo)
-      if (ehDecisao && !decisaoAberta) { html.push('<div class="bloco-decisao">'); decisaoAberta = true }
-      else if (!ehDecisao && decisaoAberta) { html.push('</div>'); decisaoAberta = false }
-      emSecaoOpcoes = /op[cç][ãõo]es/i.test(textoTitulo)
-      const n = Math.min(titulo[1].length + 1, 6)
-      html.push(`<h${n}>${inline(textoTitulo)}</h${n}>`)
-      continue
-    }
-    if (itemOpcao) {
-      if (!opcoesAbertas) { html.push('<div class="cartoes-opcao">'); opcoesAbertas = true }
-      const rotulo = `${itemOpcao[1]}) ${itemOpcao[2]}`
-      html.push(`<button type="button" class="cartao-opcao" data-opcao="${rotulo.replace(/"/g, '&quot;')}">${inline(rotulo)}</button>`)
-      continue
-    }
-    fecharOpcoes()
-    if (item) {
-      if (!listaAberta) { html.push('<ul>'); listaAberta = true }
-      html.push(`<li>${inline(item[1])}</li>`)
-      continue
-    }
-    fecharLista()
-    if (linha.trim() === '') continue
-    html.push(`<p>${inline(linha)}</p>`)
-  }
-  fecharLista()
-  fecharOpcoes()
-  if (decisaoAberta) html.push('</div>')
-  return html.join('\n')
-}
 
 /** "2026-09-28T18:00…" -> "28/09 18:00"; formato que não bate cai como veio. */
 function formatarQuandoPrazo(p) {
@@ -594,12 +536,6 @@ async function abrirCard(id) {
   pintarSeletorOpcoes(c)
   $('modal-resolver').hidden = c.coluna !== 'pendente-diego'
   showModal()
-}
-
-/** A seção "Credenciais necessárias" NUNCA é renderizada como texto livre (alguém pode ter colado um valor):
- *  o painel dedicado abaixo mostra só nome + status. */
-function semSecaoDeCredenciais(corpo) {
-  return corpo.replace(/^## Credenciais necessárias[^\n]*\n[\s\S]*?(?=^## |(?![\s\S]))/m, '')
 }
 
 /** Credenciais de teste do card: só NOME e status (o valor nunca chega ao console). */
