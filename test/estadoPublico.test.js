@@ -9,7 +9,7 @@ import {
   redigirFluxo,
   escreverEstadoPublico,
   lerEstadoPublico,
-  publicarEstadoAtivo,
+  criarPublicadorEstado,
 } from '../src/estadoPublico.js'
 
 const dir = () => mkdtempSync(join(tmpdir(), 'sle-publico-'))
@@ -79,7 +79,7 @@ test('lerEstadoPublico tolera arquivo ausente ou corrompido, nunca lanca', () =>
   assert.deepEqual(lerEstadoPublico(f), { atualizado: null, sessoes: [], eventos: [] })
 })
 
-test('publicarEstadoAtivo publica sessao viva de verdade, com card e ultimoPasso', () => {
+test('criarPublicadorEstado publica sessao viva de verdade, com card e ultimoPasso', () => {
   const d = dir()
   const publicoPath = join(d, 'estado-publico', 'sessoes.json')
   const estado = new Estado(join(d, 'dados'))
@@ -88,7 +88,8 @@ test('publicarEstadoAtivo publica sessao viva de verdade, com card e ultimoPasso
     agent: null, session: 's1', parent_agent: null, payload: { cwd: '/repo/cenvia' },
   })
 
-  const { sessoes, mudou } = publicarEstadoAtivo({ estado, publicoPath })
+  const publicar = criarPublicadorEstado({ estado, publicoPath })
+  const { sessoes, mudou } = publicar()
   assert.equal(mudou, true)
   assert.equal(sessoes.length, 1)
   assert.equal(sessoes[0].card, 'CARD-118')
@@ -99,7 +100,7 @@ test('publicarEstadoAtivo publica sessao viva de verdade, com card e ultimoPasso
   assert.equal(relido.sessoes[0].card, 'CARD-118')
 })
 
-test('publicarEstadoAtivo com o mesmo estado nao reescreve o arquivo (revisao do PR #4)', () => {
+test('criarPublicadorEstado com o mesmo estado nao reescreve o arquivo (revisao do PR #4)', () => {
   const d = dir()
   const publicoPath = join(d, 'estado-publico', 'sessoes.json')
   const estado = new Estado(join(d, 'dados'))
@@ -107,15 +108,18 @@ test('publicarEstadoAtivo com o mesmo estado nao reescreve o arquivo (revisao do
     ts: new Date().toISOString(), kind: 'session.start', loop: 'L2', card: null,
     agent: null, session: 's1', parent_agent: null, payload: {},
   })
+  // throttleMs: 0 -- este teste prova a checagem de conteúdo, não o throttle
+  // (que tem teste próprio, abaixo, com o relógio sob controle).
+  const publicar = criarPublicadorEstado({ estado, publicoPath, throttleMs: 0 })
 
-  const primeira = publicarEstadoAtivo({ estado, publicoPath })
+  const primeira = publicar()
   assert.equal(primeira.mudou, true)
   const carimboAntes = lerEstadoPublico(publicoPath).atualizado
 
   // Nada de novo aconteceu no Estado -- como o publish-loop de 30s chamaria
   // de novo com a máquina parada. Sem essa checagem, o carimbo de tempo
   // sozinho pareceria mudança e commitaria/empurraria pra sempre.
-  const segunda = publicarEstadoAtivo({ estado, publicoPath })
+  const segunda = publicar()
   assert.equal(segunda.mudou, false)
   assert.equal(lerEstadoPublico(publicoPath).atualizado, carimboAntes)
 
@@ -124,7 +128,77 @@ test('publicarEstadoAtivo com o mesmo estado nao reescreve o arquivo (revisao do
     ts: new Date().toISOString(), kind: 'tool.post', loop: 'L1', card: 'CARD-042',
     agent: null, session: 's1', parent_agent: null, payload: { tool: 'Edit' },
   })
-  const terceira = publicarEstadoAtivo({ estado, publicoPath })
+  const terceira = publicar()
   assert.equal(terceira.mudou, true)
   assert.equal(lerEstadoPublico(publicoPath).sessoes[0].card, 'CARD-042')
+})
+
+test('criarPublicadorEstado ignora campo volatil (ultimoPasso) sozinho -- so evento novo do MESMO card nao commita', () => {
+  const d = dir()
+  const publicoPath = join(d, 'estado-publico', 'sessoes.json')
+  const estado = new Estado(join(d, 'dados'))
+  estado.registrar({
+    ts: new Date().toISOString(), kind: 'session.start', loop: 'L2', card: 'CARD-118',
+    agent: null, session: 's1', parent_agent: null, payload: {},
+  })
+  const publicar = criarPublicadorEstado({ estado, publicoPath, throttleMs: 0 })
+  assert.equal(publicar().mudou, true)
+  // Primeiro tool.post: e um TIPO novo de passo pra essa sessao no fluxo --
+  // conta como mudanca real (uma vez).
+  estado.registrar({
+    ts: new Date().toISOString(), kind: 'tool.post', loop: 'L1', card: 'CARD-118',
+    agent: null, session: 's1', parent_agent: null, payload: { tool: 'Edit' },
+  })
+  assert.equal(publicar().mudou, true)
+
+  // A partir daqui, sessao ativa mandando `tool.post` atras de `tool.post`,
+  // sem trocar de card, agente nem tipo de passo novo -- e exatamente o
+  // cenario que a revisao do PR #6 pegou commitando a cada 30s
+  // (ultimoPasso/ultimo/eventos mudam sempre, o resto nao).
+  for (let i = 0; i < 5; i++) {
+    estado.registrar({
+      ts: new Date().toISOString(), kind: 'tool.post', loop: 'L1', card: 'CARD-118',
+      agent: null, session: 's1', parent_agent: null, payload: { tool: 'Edit' },
+    })
+    assert.equal(publicar().mudou, false, `tick ${i}: nada estavel mudou, nao pode commitar`)
+  }
+})
+
+test('criarPublicadorEstado: no maximo 1 escrita a cada throttleMs, mesmo com mudanca real repetida (revisao do PR #6)', () => {
+  const d = dir()
+  const publicoPath = join(d, 'estado-publico', 'sessoes.json')
+  const estado = new Estado(join(d, 'dados'))
+  const publicar = criarPublicadorEstado({ estado, publicoPath, throttleMs: 120_000 })
+
+  let t = Date.parse('2026-09-29T00:00:00Z')
+  estado.registrar({
+    ts: new Date(t).toISOString(), kind: 'session.start', loop: 'L2', card: 'CARD-001',
+    agent: null, session: 's1', parent_agent: null, payload: {},
+  })
+  assert.equal(publicar({ agora: t }).mudou, true, 'primeira escrita nunca e throttled')
+
+  // Card muda de novo (mudanca real de verdade), mas so 10s depois -- dentro do throttle.
+  t += 10_000
+  estado.registrar({
+    ts: new Date(t).toISOString(), kind: 'tool.post', loop: 'L1', card: 'CARD-002',
+    agent: null, session: 's1', parent_agent: null, payload: {},
+  })
+  let r = publicar({ agora: t })
+  assert.equal(r.mudou, false, 'throttle segura o commit mesmo com mudanca real')
+  assert.equal(lerEstadoPublico(publicoPath).sessoes[0].card, 'CARD-001', 'arquivo ainda tem o estado anterior')
+
+  // Mais uma mudanca real, ainda dentro da janela de 2min.
+  t += 10_000
+  estado.registrar({
+    ts: new Date(t).toISOString(), kind: 'tool.post', loop: 'L1', card: 'CARD-003',
+    agent: null, session: 's1', parent_agent: null, payload: {},
+  })
+  assert.equal(publicar({ agora: t }).mudou, false)
+
+  // Passa da janela: escreve, e com o estado MAIS RECENTE acumulado --
+  // nunca um instantaneo intermediario (CARD-002) perdido no meio do caminho.
+  t += 120_000
+  r = publicar({ agora: t })
+  assert.equal(r.mudou, true)
+  assert.equal(lerEstadoPublico(publicoPath).sessoes[0].card, 'CARD-003')
 })

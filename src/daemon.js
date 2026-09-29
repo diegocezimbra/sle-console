@@ -13,7 +13,7 @@ import { dirname, join, relative } from 'node:path'
 import { Estado } from './estado.js'
 import { createAuthMiddleware } from './auth.js'
 import { startPullLoop, commitAndPush } from './gitSync.js'
-import { publicarEstadoAtivo, lerEstadoPublico } from './estadoPublico.js'
+import { criarPublicadorEstado, lerEstadoPublico } from './estadoPublico.js'
 import { normalizar } from './ingest.js'
 import { indexarCards } from './cards.js'
 import { diffDoArquivo, estadoDoGit, historico, prsAbertos } from './repo.js'
@@ -62,7 +62,7 @@ export function criarDaemon({
   raiz = null,
   tetoDiarioUsd = Infinity,
   git = null, // { dataDir, keyPath, intervalMs? } quando CONSOLE_MODE=git; `projeto` já é o clone.
-  // { publicoPath, dataDir, intervalMs?, janelaAtivaMs?, limiteEventos? } no console LOCAL
+  // { publicoPath, dataDir, intervalMs?, janelaAtivaMs?, limiteEventos?, throttleMs? } no console LOCAL
   // (CARD-120): publica o `Estado` vivo (o mesmo que alimenta a aba Agentes daqui) redigido
   // em `publicoPath` e empurra pro git a cada `intervalMs` -- é o que o console em modo git
   // lê pra popular AGENTES e a régua, já que não tem rede direta até aqui pros hooks de sessão.
@@ -98,6 +98,20 @@ export function criarDaemon({
       })
     : null
 
+  // Uma instância só por daemon: o throttle de `criarPublicadorEstado` vive
+  // no fechamento (`ultimoCommitEm`) e precisa sobreviver entre ticks do
+  // `setInterval` -- criar de novo a cada chamada perderia a memória do
+  // throttle e voltaria a commitar sem limite (revisão do PR #6).
+  const publicarEstado = publicarLocal
+    ? criarPublicadorEstado({
+        estado,
+        publicoPath: publicarLocal.publicoPath,
+        janelaAtivaMs: publicarLocal.janelaAtivaMs,
+        limiteEventos: publicarLocal.limiteEventos,
+        throttleMs: publicarLocal.throttleMs,
+      })
+    : null
+
   /** Fecha o ciclo local do CARD-120: redige o `Estado` vivo (sessões E fluxo
    *  recente, pra régua), escreve o arquivo público e empurra pro remoto --
    *  mesmo mecanismo de `commitAndPush` que já versiona `respostas/`. Erro
@@ -106,18 +120,14 @@ export function criarDaemon({
   function publicarSessoesLocais() {
     let mudou
     try {
-      ;({ mudou } = publicarEstadoAtivo({
-        estado,
-        publicoPath: publicarLocal.publicoPath,
-        janelaAtivaMs: publicarLocal.janelaAtivaMs,
-        limiteEventos: publicarLocal.limiteEventos,
-      }))
+      ;({ mudou } = publicarEstado())
     } catch (erro) {
       registrar({ kind: 'estado-publico.falhou', loop: 'L3', card: null, session: null, payload: { erro: String(erro) } })
       return
     }
-    // Sem mudança real nas sessões, não há o que commitar -- só o carimbo de
-    // tempo mudou, e isso sozinho commitaria a cada 30s pra sempre.
+    // `mudou:false` cobre dois casos: nada de real mudou (campo volátil
+    // sozinho não conta), ou mudou mas o throttle de 2min ainda está
+    // segurando -- os dois sem o que commitar agora.
     if (!mudou) return
     const resultado = commitAndPush({
       dataDir: publicarLocal.dataDir,

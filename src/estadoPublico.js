@@ -74,19 +74,66 @@ export function lerEstadoPublico(caminho) {
   }
 }
 
+const THROTTLE_PADRAO_MS = 2 * 60_000
+
 /**
- * O ciclo inteiro do lado local: lê o `Estado` vivo, redige sessões e
- * fluxo, e só escreve quando o conteúdo mudou de verdade -- comparar o
- * arquivo inteiro faria o carimbo `atualizado` sozinho parecer mudança, e o
- * publish-loop de 30s viraria commit+push pra sempre mesmo com a máquina
- * parada (revisão do PR #4).
+ * Só os campos que definem "mudou de verdade": sessão nova ou sumida,
+ * `card`, `agente`, `modelo` e a atividade já calculada (ordenados por
+ * `sessao`, porque `Estado#snapshot()` reordena pelo `ultimo` a cada evento
+ * -- sem ordenar aqui, a MESMA sessão trocando de posição no array já
+ * pareceria mudança). `ultimoPasso`, `ultimo` e `eventos` ficam de fora de
+ * propósito: são voláteis, mudam a cada evento de uma sessão que já estava
+ * ativa, e foi por isso que a revisão do PR #6 pegou o publish-loop
+ * commitando a cada 30s com qualquer sessão viva.
  */
-export function publicarEstadoAtivo({ estado, publicoPath, agora = Date.now(), janelaAtivaMs, limiteEventos }) {
-  const snap = estado.snapshot()
-  const sessoes = redigirSessoes(snap.sessoes, { agora, janelaAtivaMs })
-  const eventos = redigirFluxo(snap.fluxo, { limite: limiteEventos })
-  const atual = lerEstadoPublico(publicoPath)
-  const mudou = JSON.stringify(atual.sessoes) !== JSON.stringify(sessoes) || JSON.stringify(atual.eventos) !== JSON.stringify(eventos)
-  if (mudou) escreverEstadoPublico(publicoPath, { sessoes, eventos })
-  return { sessoes, eventos, mudou }
+function chaveEstavelSessoes(sessoes) {
+  return JSON.stringify(
+    (sessoes ?? [])
+      .map((s) => ({ sessao: s.sessao, card: s.card ?? null, agente: s.agente ?? null, modelo: s.modelo ?? null, ativa: !!s.ativa }))
+      .sort((a, b) => String(a.sessao).localeCompare(String(b.sessao)))
+  )
+}
+
+/**
+ * O fluxo é comparado pelo CONJUNTO de pares `kind`+`session` distintos,
+ * nunca pela lista posicional nem por `ts`: uma sessão ativa manda
+ * `tool.post` atrás de `tool.post` o tempo todo, e cada evento novo cresce o
+ * array -- comparar a lista inteira faria a MESMA atividade de sempre
+ * parecer mudança de novo a cada evento. Um tipo de passo novo (ou uma
+ * sessão nova aparecendo no fluxo) muda o conjunto; o quinto `tool.post`
+ * seguido da mesma sessão, não.
+ */
+function chaveEstavelFluxo(eventos) {
+  const chaves = new Set((eventos ?? []).map((e) => `${e.kind}|${e.session ?? ''}`))
+  return JSON.stringify([...chaves].sort())
+}
+
+/**
+ * Publicador com memória: fecha sobre `ultimoCommitEm` pra aplicar duas
+ * proteções entre chamadas sucessivas do publish-loop (a cada 30s) --
+ * 1) só escreve quando `card`/`agente`/`modelo`/`ativa`/fluxo mudam de
+ *    verdade (campo volátil sozinho não conta -- revisão do PR #4);
+ * 2) mesmo com mudança real, no máximo 1 escrita a cada `throttleMs`
+ *    (padrão 2min): mudança rápida demais (várias sessões batendo evento
+ *    junto) acumula e sai na próxima janela, com o estado mais recente --
+ *    nunca um instantâneo intermediário perdido (revisão do PR #6).
+ * Os campos voláteis vão pro arquivo em toda escrita que de fato acontece:
+ * só a DECISÃO de escrever ignora eles, o conteúdo escrito é sempre completo.
+ */
+export function criarPublicadorEstado({ estado, publicoPath, janelaAtivaMs, limiteEventos, throttleMs = THROTTLE_PADRAO_MS }) {
+  let ultimoCommitEm = 0
+  return function publicar({ agora = Date.now() } = {}) {
+    const snap = estado.snapshot()
+    const sessoes = redigirSessoes(snap.sessoes, { agora, janelaAtivaMs })
+    const eventos = redigirFluxo(snap.fluxo, { limite: limiteEventos })
+    const atual = lerEstadoPublico(publicoPath)
+    const mudouDeVerdade =
+      chaveEstavelSessoes(atual.sessoes) !== chaveEstavelSessoes(sessoes) ||
+      chaveEstavelFluxo(atual.eventos) !== chaveEstavelFluxo(eventos)
+    if (!mudouDeVerdade) return { sessoes, eventos, mudou: false }
+    if (agora - ultimoCommitEm < throttleMs) return { sessoes, eventos, mudou: false, throttled: true }
+    escreverEstadoPublico(publicoPath, { sessoes, eventos })
+    ultimoCommitEm = agora
+    return { sessoes, eventos, mudou: true }
+  }
 }
