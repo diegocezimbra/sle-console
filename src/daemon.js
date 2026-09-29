@@ -56,6 +56,9 @@ const ESTATICOS = {
  * `raiz` e a arvore que contem varios projetos; `projeto` e o padrao.
  * Toda rota de leitura aceita `?projeto=`, validado contra a arvore.
  */
+/** Limite da resposta do Diego (caracteres): cabe um curl/log colado inteiro. */
+const LIMITE_TEXTO_RESPOSTA = 1_000_000
+
 export function criarDaemon({
   dados,
   projeto = process.cwd(),
@@ -627,9 +630,9 @@ export function criarDaemon({
       res.writeHead(422, { 'content-type': 'application/json; charset=utf-8' })
       return res.end(JSON.stringify({ erro: 'opção ou texto obrigatório' }))
     }
-    if (texto.length > 4000) {
+    if (texto.length > LIMITE_TEXTO_RESPOSTA) {
       res.writeHead(422, { 'content-type': 'application/json; charset=utf-8' })
-      return res.end(JSON.stringify({ erro: 'texto acima de 4000 caracteres' }))
+      return res.end(JSON.stringify({ erro: 'texto acima de 1000000 caracteres' }))
     }
     const card = indiceAtual.cards.find((c) => c.id === id) ?? achadoEmTodos(id)
     if (!card) return fim(res, 404)
