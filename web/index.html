@@ -24,8 +24,12 @@
 <main>
   <section id="tela-fluxo">
     <div id="sessoes-painel">
-      <h2>Agentes</h2>
+      <h2>Agentes <span id="sessoes-contagem" class="pill"></span></h2>
       <ul id="sessoes"><li class="vazio">nenhuma sessão ainda</li></ul>
+      <details id="sessoes-recentes-painel" hidden>
+        <summary>recentes (<span id="sessoes-recentes-contagem">0</span>)</summary>
+        <ul id="sessoes-recentes"></ul>
+      </details>
     </div>
     <div id="regua-painel">
       <h2>Régua de loops</h2>

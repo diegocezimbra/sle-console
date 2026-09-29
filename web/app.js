@@ -4,6 +4,12 @@ const COLUNAS = ['backlog', 'pendente-diego', 'refinamento', 'aprovado', 'doing'
 // Só a coluna de decisão do Diego precisa de rótulo -- as demais já se leem pelo próprio id.
 const ROTULOS = { 'pendente-diego': 'Pendentes do Diego' }
 const eventos = []
+// IDs das sessões ativas na última pintura -- a régua usa pra saber que
+// traço é de trabalho de agora e que traço é eco de sessão parada. Precisa
+// estar aqui em cima (não perto de `pintarSessoes`): o `mostrar()` do load
+// inicial chama `pintarRegua()`, que lê esta variável, antes do resto do
+// arquivo terminar de rodar -- `let` mais abaixo ainda estaria em TDZ.
+let sessoesAtivasIds = new Set()
 let indice = { board: {}, cards: [] }
 // Filtro de prioridade do board (CARD-120). 'todas' nunca esconde nada --
 // selecionar um P específico é uma escolha explícita de quem está olhando.
@@ -168,16 +174,38 @@ function pintarGit(g) {
   $('git').textContent = `${g.branch} ${g.head}${sujo}`
 }
 
+function liDeSessao(s, { morta }) {
+  const li = document.createElement('li')
+  if (morta) li.className = 'morta'
+  li.append(campo('id', s.agente ?? s.projeto ?? (s.id ?? '').slice(0, 8)), campo('meta', metaDeSessao(s)))
+  return li
+}
+
+/**
+ * "Trabalhando agora" é só `ativa:true` -- contador e lista principal. O
+ * resto (sessão de horas atrás que a janela de publicação do CARD-120c
+ * ainda deixa passar) vai pra uma seção recolhida: existe pra quem quer
+ * olhar o rastro recente, não pra inflar "N agentes trabalhando" com
+ * sessão que já parou (era assim que 160 sessões publicadas viravam "160
+ * agentes trabalhando" com só 4 de verdade ativas).
+ */
 function pintarSessoes(sessoes) {
-  if (!sessoes?.length) return
+  if (!sessoes) return
+  const ativas = sessoes.filter((s) => s.ativa)
+  const recentes = sessoes.filter((s) => !s.ativa)
+  sessoesAtivasIds = new Set(ativas.map((s) => s.id ?? s.sessao))
+
+  $('sessoes-contagem').textContent = sessoes.length ? `${ativas.length} trabalhando agora` : ''
   $('sessoes').replaceChildren(
-    ...sessoes.map((s) => {
-      const li = document.createElement('li')
-      if (!s.ativa) li.className = 'morta'
-      li.append(campo('id', s.agente ?? s.projeto ?? (s.id ?? '').slice(0, 8)), campo('meta', metaDeSessao(s)))
-      return li
-    })
+    ...(ativas.length
+      ? ativas.map((s) => liDeSessao(s, { morta: false }))
+      : [Object.assign(document.createElement('li'), { className: 'vazio', textContent: 'nenhum agente trabalhando agora' })])
   )
+
+  const painelRecentes = $('sessoes-recentes-painel')
+  $('sessoes-recentes-contagem').textContent = recentes.length
+  painelRecentes.hidden = recentes.length === 0
+  $('sessoes-recentes').replaceChildren(...recentes.map((s) => liDeSessao(s, { morta: true })))
 }
 
 /**
@@ -910,6 +938,19 @@ function campo(classe, texto) {
   return s
 }
 
+/**
+ * Mesmo corte de "trabalhando agora" da lista de Agentes (CARD-120c): evento
+ * sem sessão (decisão de gate, movimento de card) sempre entra -- é
+ * atividade do sistema, não de uma sessão que pode estar parada; evento COM
+ * sessão só entra se aquela sessão está entre as ativas da última pintura.
+ * Sem este corte a régua de uma sessão de véspera continuava desenhando
+ * traço ao lado da sessão de agora, como se as duas estivessem no mesmo
+ * turno de trabalho.
+ */
+function eventosParaRegua() {
+  return eventos.filter((e) => !e.session || sessoesAtivasIds.has(e.session))
+}
+
 // A regua e um analisador logico: uma faixa por escala de tempo, um traco por
 // evento. Canvas a mao porque biblioteca de grafico nao desenha isto.
 function pintarRegua() {
@@ -919,11 +960,12 @@ function pintarRegua() {
   const l = (c.width = c.clientWidth * devicePixelRatio)
   const a = (c.height = 120 * devicePixelRatio)
   ctx.clearRect(0, 0, l, a)
-  if (!eventos.length) return
+  const traco = eventosParaRegua()
+  if (!traco.length) return
 
   const faixas = ['L1', 'L2', 'L3']
-  const t0 = Date.parse(eventos[0].ts)
-  const t1 = Math.max(Date.parse(eventos.at(-1).ts), t0 + 1000)
+  const t0 = Date.parse(traco[0].ts)
+  const t1 = Math.max(Date.parse(traco.at(-1).ts), t0 + 1000)
   const x = (ts) => ((Date.parse(ts) - t0) / (t1 - t0)) * (l - 8) + 4
 
   faixas.forEach((faixa, i) => {
@@ -937,7 +979,7 @@ function pintarRegua() {
 
     ctx.strokeStyle = CORES[faixa]
     ctx.lineWidth = 2 * devicePixelRatio
-    for (const e of eventos) {
+    for (const e of traco) {
       if (e.loop !== faixa) continue
       const px = x(e.ts)
       ctx.beginPath()

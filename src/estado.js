@@ -8,21 +8,48 @@
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+import { sessaoProtegida } from './estadoPublico.js'
+
 export class Estado {
   #janela
 
   #ttlMs
 
-  constructor(dir, { janela = 200, ttlMs = 15 * 60000 } = {}) {
+  #maxIdadeSessaoMs
+
+  constructor(dir, { janela = 200, ttlMs = 15 * 60000, maxIdadeSessaoMs = 24 * 3600_000 } = {}) {
     mkdirSync(dir, { recursive: true })
     this.arquivo = join(dir, 'events.jsonl')
     this.#janela = janela
     this.#ttlMs = ttlMs
+    this.#maxIdadeSessaoMs = maxIdadeSessaoMs
     this.sessoes = new Map()
     this.fluxo = []
     this.grafo = []
     this.contadores = { eventos: 0, falhas: 0 }
     this.#remontar()
+    // Sem isto, todo boot reconstrói do JSONL inteiro e o índice em memória
+    // cresce sem fim (era assim que `estado-publico/sessoes.json` chegou a
+    // carregar 160 sessões -- todo o histórico dos hooks, nunca só quem
+    // ainda trabalha). O JSONL em si nunca é podado: é o disco que é a
+    // verdade; isto aqui é só o índice descartável sobre ele.
+    this.podar()
+  }
+
+  /**
+   * Poda periódica (CARD-120c): tira do índice em memória a sessão sem
+   * NENHUM evento há mais de `maxIdadeSessaoMs` (padrão 24h). Não mexe no
+   * `events.jsonl` -- só no `Map` que `snapshot()`/`publicar()` leem --
+   * então uma sessão podada que voltar a mandar evento reaparece normalmente.
+   * `deusSessionId`/`cardsEmDoing` (revisão do PR #7) marcam quem a idade
+   * sozinha não pode apagar -- ver `sessaoProtegida` em `estadoPublico.js`.
+   */
+  podar({ agora = Date.now(), maxIdadeMs = this.#maxIdadeSessaoMs, deusSessionId = null, cardsEmDoing = null } = {}) {
+    for (const [id, s] of this.sessoes) {
+      if (sessaoProtegida(s, { deusSessionId, cardsEmDoing })) continue
+      const idadeMs = s.ultimo ? agora - Date.parse(s.ultimo) : Infinity
+      if (idadeMs > maxIdadeMs) this.sessoes.delete(id)
+    }
   }
 
   registrar(evento) {

@@ -10,6 +10,8 @@ import {
   escreverEstadoPublico,
   lerEstadoPublico,
   criarPublicadorEstado,
+  selecionarParaPublicar,
+  sessaoProtegida,
 } from '../src/estadoPublico.js'
 
 const dir = () => mkdtempSync(join(tmpdir(), 'sle-publico-'))
@@ -37,6 +39,82 @@ test('redigirSessoes: sessao sem ultimo (nunca deveria existir, mas nao explode)
 test('redigirSessoes: lista vazia ou ausente nao quebra', () => {
   assert.deepEqual(redigirSessoes([]), [])
   assert.deepEqual(redigirSessoes(undefined), [])
+})
+
+// CARD-120c: o publicador estava subindo o Estado inteiro -- toda sessao ja
+// vista, nao so quem trabalha agora -- e por isso 160 sessoes historicas
+// chegavam no arquivo com so 4 `ativa:true`, e o console em modo git lia
+// isso como "160 agentes trabalhando".
+test('selecionarParaPublicar descarta sessao fora da janela de publicacao, mesmo inativa mas recente', () => {
+  const redigidas = redigirSessoes(
+    [
+      { id: 's-agora', ultimo: new Date(AGORA - 60_000).toISOString() }, // ativa
+      { id: 's-de-3h', ultimo: new Date(AGORA - 3 * 3600_000).toISOString() }, // parada, dentro da janela de 6h
+      { id: 's-de-ontem', ultimo: new Date(AGORA - 30 * 3600_000).toISOString() }, // parada ha 30h -- fora
+    ],
+    { agora: AGORA, janelaAtivaMs: 10 * 60_000 }
+  )
+  const publicadas = selecionarParaPublicar(redigidas, { agora: AGORA, janelaPublicacaoMs: 6 * 3600_000 })
+  assert.deepEqual(publicadas.map((s) => s.sessao).sort(), ['s-agora', 's-de-3h'])
+})
+
+test('selecionarParaPublicar poe as ativas primeiro', () => {
+  const redigidas = redigirSessoes(
+    [
+      { id: 's-parada', ultimo: new Date(AGORA - 3 * 3600_000).toISOString() },
+      { id: 's-ativa', ultimo: new Date(AGORA - 60_000).toISOString() },
+    ],
+    { agora: AGORA, janelaAtivaMs: 10 * 60_000 }
+  )
+  const publicadas = selecionarParaPublicar(redigidas, { agora: AGORA, janelaPublicacaoMs: 6 * 3600_000 })
+  assert.deepEqual(publicadas.map((s) => s.sessao), ['s-ativa', 's-parada'])
+})
+
+// Revisao do PR #7: a janela de publicacao nao pode tirar do arquivo a
+// sessao do DEUS nem a dona de um card em `doing` -- ficam publicadas
+// (como "recentes", com `ultimo` de horas atras visivel na tela).
+test('selecionarParaPublicar mantem sessao do DEUS fora da janela, por id ou por agente', () => {
+  const antiga = new Date(AGORA - 30 * 3600_000).toISOString()
+  const redigidasPorId = redigirSessoes([{ id: 'deus-abc', ultimo: antiga }], { agora: AGORA })
+  const publicadasPorId = selecionarParaPublicar(redigidasPorId, {
+    agora: AGORA, janelaPublicacaoMs: 6 * 3600_000, deusSessionId: 'deus-abc',
+  })
+  assert.equal(publicadasPorId.length, 1)
+
+  const redigidasPorAgente = redigirSessoes([{ id: 'x', agente: 'deus', ultimo: antiga }], { agora: AGORA })
+  const publicadasPorAgente = selecionarParaPublicar(redigidasPorAgente, { agora: AGORA, janelaPublicacaoMs: 6 * 3600_000 })
+  assert.equal(publicadasPorAgente.length, 1)
+})
+
+test('selecionarParaPublicar mantem sessao dona de card em doing fora da janela', () => {
+  const redigidas = redigirSessoes(
+    [{ id: 'presa', card: 'CARD-042', ultimo: new Date(AGORA - 72 * 3600_000).toISOString() }],
+    { agora: AGORA }
+  )
+  const comProtecao = selecionarParaPublicar(redigidas, {
+    agora: AGORA, janelaPublicacaoMs: 6 * 3600_000, cardsEmDoing: new Set(['CARD-042']),
+  })
+  assert.equal(comProtecao.length, 1)
+
+  const semProtecao = selecionarParaPublicar(redigidas, { agora: AGORA, janelaPublicacaoMs: 6 * 3600_000, cardsEmDoing: new Set() })
+  assert.equal(semProtecao.length, 0)
+})
+
+test('sessaoProtegida: sem deusSessionId/cardsEmDoing, ninguem e protegido', () => {
+  assert.equal(sessaoProtegida({ id: 'qualquer', card: 'CARD-1' }), false)
+})
+
+test('selecionarParaPublicar so publica subagente (general-purpose/Explore) enquanto ativo', () => {
+  const redigidas = redigirSessoes(
+    [
+      { id: 'sub-morto', agente: 'general-purpose', ultimo: new Date(AGORA - 30 * 60_000).toISOString() },
+      { id: 'sub-vivo', agente: 'Explore', ultimo: new Date(AGORA - 60_000).toISOString() },
+      { id: 'mae-parada', agente: 'implementer', ultimo: new Date(AGORA - 30 * 60_000).toISOString() },
+    ],
+    { agora: AGORA, janelaAtivaMs: 10 * 60_000 }
+  )
+  const publicadas = selecionarParaPublicar(redigidas, { agora: AGORA, janelaPublicacaoMs: 6 * 3600_000 })
+  assert.deepEqual(publicadas.map((s) => s.sessao).sort(), ['mae-parada', 'sub-vivo'])
 })
 
 test('redigirFluxo mantem so ts/loop/kind/session -- nunca comando, arquivo ou cwd', () => {
