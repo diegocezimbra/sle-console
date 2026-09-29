@@ -12,13 +12,16 @@ let base, fechar, browser, projeto
 
 before(async () => {
   projeto = mkdtempSync(join(tmpdir(), 'sle-board-'))
-  for (const col of ['backlog', 'doing', 'review']) mkdirSync(join(projeto, 'cards', col), { recursive: true })
+  for (const col of ['backlog', 'doing', 'review', 'testando']) mkdirSync(join(projeto, 'cards', col), { recursive: true })
   writeFileSync(join(projeto, 'cards', 'doing', 'CARD-042.md'),
     '---\nid: CARD-042\ntitle: Token opaco com refresh\nstatus: doing\nrisk: alto\nbudget_usd: 8\n---\n\n## Requisitos\n\nR1. O sistema DEVE invalidar o refresh anterior.\n')
   writeFileSync(join(projeto, 'cards', 'backlog', 'CARD-007.md'),
     '---\nid: CARD-007\ntitle: Exportar relatorio\nstatus: backlog\nrisk: baixo\n---\ncorpo\n')
   writeFileSync(join(projeto, 'cards', 'backlog', 'CARD-008.md'),
     '---\nid: CARD-008\ntitle: Card urgente\nstatus: backlog\nrisk: baixo\nprioridade: urgente\n---\ncorpo\n')
+
+  writeFileSync(join(projeto, 'cards', 'testando', 'CARD-300.md'),
+    '---\nid: CARD-300\ntitle: Em teste em producao\nstatus: testando\nrisk: baixo\n---\n\n## Como testar\n\n1. Abrir o admin.\n\n## Credenciais necessárias\n\n- CENVIA_PROD_LOGIN — status: preenchida\n- META_TEST_ACCOUNT — status: ausente\n')
 
   const d = criarDaemon({ dados: mkdtempSync(join(tmpdir(), 'sle-bd-')), projeto })
   await new Promise((r) => d.servidor.listen(0, '127.0.0.1', r))
@@ -44,7 +47,7 @@ test('da para trocar de tela sem recarregar a pagina', { skip: pular }, async ()
 })
 
 test('o board mostra as colunas do pipeline e os cards em cada uma', { skip: pular }, async () => {
-  await browser.esperar(`document.querySelectorAll('#tela-board .coluna').length === 7`)
+  await browser.esperar(`document.querySelectorAll('#tela-board .coluna').length === 9`)
   const texto = await browser.avaliar(`document.getElementById('tela-board').textContent`)
   assert.match(texto, /Token opaco com refresh/)
   assert.match(texto, /Exportar relatorio/)
@@ -99,11 +102,10 @@ test('CARD-120: filtro de prioridade esconde os cards que nao sao do P escolhido
 
 test('clicar num card abre a spec dele', { skip: pular }, async () => {
   await browser.avaliar(`document.querySelector('#tela-board [data-card="CARD-042"]').click()`)
-  await browser.esperar(`document.getElementById('tela-card').offsetParent !== null`)
-  const texto = await browser.avaliar(`document.getElementById('tela-card').textContent`)
+  await browser.esperar(`document.getElementById('modal-card').hidden === false`)
+  const texto = await browser.avaliar(`document.getElementById('modal-corpo').textContent`)
   assert.match(texto, /R1\. O sistema DEVE invalidar/)
-  assert.match(texto, /alto/)
-  assert.match(texto, /8/)
+  await browser.avaliar(`document.getElementById('modal-fechar').click()`)
 })
 
 test('a tela nao registra erro de JavaScript em nenhuma aba', { skip: pular }, async () => {
@@ -122,4 +124,27 @@ test('o board avisa quando ha trabalho acontecendo fora dele', { skip: pular }, 
   await browser.esperar(`document.getElementById('fora-do-board').textContent.includes('sem card')`)
   const t = await browser.avaliar(`document.getElementById('fora-do-board').textContent`)
   assert.match(t, /projeto-x/, 'precisa dizer ONDE o trabalho está acontecendo')
+})
+
+test('CARD-201: coluna Testando fica entre review e done, com contagem no cabecalho', { skip: pular }, async () => {
+  await browser.avaliar(`document.querySelector('nav button[data-tela="board"]').click()`)
+  const nomes = await browser.avaliar(
+    `[...document.querySelectorAll('#tela-board .coluna')].map((c) => c.dataset.coluna).join(',')`)
+  assert.match(nomes, /review,testando,done/)
+  const cab = await browser.avaliar(
+    `document.querySelector('#tela-board .coluna[data-coluna="testando"]>h3').textContent`)
+  assert.match(cab, /Testando/)
+  assert.match(cab, /1$/)
+  assert.match(await browser.avaliar(
+    `document.querySelector('#tela-board .coluna[data-coluna="testando"]').textContent`), /CARD-300/)
+})
+
+test('CARD-201: o modal mostra Como testar e as credenciais com status por chave', { skip: pular }, async () => {
+  await browser.avaliar(`document.querySelector('#tela-board [data-card="CARD-300"]').click()`)
+  await browser.esperar(`document.getElementById('modal-card').hidden === false`)
+  assert.match(await browser.avaliar(`document.getElementById('modal-corpo').textContent`), /Como testar/)
+  const creds = await browser.avaliar(
+    `[...document.querySelectorAll('#modal-credenciais li')].map((li) => li.dataset.status + ':' + li.firstChild.textContent).join('|')`)
+  assert.equal(creds, 'preenchida:CENVIA_PROD_LOGIN|ausente:META_TEST_ACCOUNT')
+  await browser.avaliar(`document.getElementById('modal-fechar').click()`)
 })

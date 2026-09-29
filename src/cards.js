@@ -12,7 +12,28 @@ import { join } from 'node:path'
 import { normalizarPrioridade, ordenarPorPrioridade } from './prioridade.js'
 
 /** Ordem do pipeline, nao ordem alfabetica: e assim que o board se le. */
-export const COLUNAS = ['backlog', 'pendente-diego', 'refinamento', 'aprovado', 'doing', 'review', 'done', 'recurring']
+export const COLUNAS = ['backlog', 'pendente-diego', 'refinamento', 'aprovado', 'doing', 'review', 'testando', 'done', 'recurring']
+
+/** Texto de uma secao `## <titulo>` do corpo, ate o proximo `## ` (ou o fim). */
+export function extrairSecao(corpo, titulo) {
+  const linhas = String(corpo ?? '').split('\n')
+  const ini = linhas.findIndex((l) => l.trim().toLowerCase() === `## ${titulo}`.toLowerCase())
+  if (ini === -1) return null
+  const fim = linhas.findIndex((l, i) => i > ini && /^## /.test(l))
+  return linhas.slice(ini + 1, fim === -1 ? undefined : fim).join('\n').trim()
+}
+
+/** `- CHAVE — status: ausente|preenchida` -> [{chave, status}]. So nomes: valor nunca passa por aqui. */
+export function extrairCredenciais(corpo) {
+  const secao = extrairSecao(corpo, 'Credenciais necessárias')
+  if (!secao) return []
+  const saida = []
+  for (const linha of secao.split('\n')) {
+    const m = /^\s*[-*]\s+`?([A-Z][A-Z0-9_]*)`?\s*(?:[—–-]+\s*status:\s*(\S+))?/.exec(linha)
+    if (m) saida.push({ chave: m[1], status: m[2] === 'preenchida' ? 'preenchida' : 'ausente' })
+  }
+  return saida
+}
 
 export function lerCard(texto) {
   if (!texto.startsWith('---')) return null
@@ -21,7 +42,7 @@ export function lerCard(texto) {
 
   const cabecalho = texto.slice(texto.indexOf('\n') + 1, fim)
   const corpo = texto.slice(texto.indexOf('\n', fim + 1) + 1)
-  return { ...interpretar(cabecalho), corpo }
+  return { ...interpretar(cabecalho), corpo, credenciais: extrairCredenciais(corpo) }
 }
 
 /** Escalares, listas em linha (`[a, b]`) e um nivel de bloco aninhado. */
