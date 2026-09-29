@@ -11,6 +11,7 @@ import {
   lerEstadoPublico,
   criarPublicadorEstado,
   selecionarParaPublicar,
+  sessaoProtegida,
 } from '../src/estadoPublico.js'
 
 const dir = () => mkdtempSync(join(tmpdir(), 'sle-publico-'))
@@ -67,6 +68,40 @@ test('selecionarParaPublicar poe as ativas primeiro', () => {
   )
   const publicadas = selecionarParaPublicar(redigidas, { agora: AGORA, janelaPublicacaoMs: 6 * 3600_000 })
   assert.deepEqual(publicadas.map((s) => s.sessao), ['s-ativa', 's-parada'])
+})
+
+// Revisao do PR #7: a janela de publicacao nao pode tirar do arquivo a
+// sessao do DEUS nem a dona de um card em `doing` -- ficam publicadas
+// (como "recentes", com `ultimo` de horas atras visivel na tela).
+test('selecionarParaPublicar mantem sessao do DEUS fora da janela, por id ou por agente', () => {
+  const antiga = new Date(AGORA - 30 * 3600_000).toISOString()
+  const redigidasPorId = redigirSessoes([{ id: 'deus-abc', ultimo: antiga }], { agora: AGORA })
+  const publicadasPorId = selecionarParaPublicar(redigidasPorId, {
+    agora: AGORA, janelaPublicacaoMs: 6 * 3600_000, deusSessionId: 'deus-abc',
+  })
+  assert.equal(publicadasPorId.length, 1)
+
+  const redigidasPorAgente = redigirSessoes([{ id: 'x', agente: 'deus', ultimo: antiga }], { agora: AGORA })
+  const publicadasPorAgente = selecionarParaPublicar(redigidasPorAgente, { agora: AGORA, janelaPublicacaoMs: 6 * 3600_000 })
+  assert.equal(publicadasPorAgente.length, 1)
+})
+
+test('selecionarParaPublicar mantem sessao dona de card em doing fora da janela', () => {
+  const redigidas = redigirSessoes(
+    [{ id: 'presa', card: 'CARD-042', ultimo: new Date(AGORA - 72 * 3600_000).toISOString() }],
+    { agora: AGORA }
+  )
+  const comProtecao = selecionarParaPublicar(redigidas, {
+    agora: AGORA, janelaPublicacaoMs: 6 * 3600_000, cardsEmDoing: new Set(['CARD-042']),
+  })
+  assert.equal(comProtecao.length, 1)
+
+  const semProtecao = selecionarParaPublicar(redigidas, { agora: AGORA, janelaPublicacaoMs: 6 * 3600_000, cardsEmDoing: new Set() })
+  assert.equal(semProtecao.length, 0)
+})
+
+test('sessaoProtegida: sem deusSessionId/cardsEmDoing, ninguem e protegido', () => {
+  assert.equal(sessaoProtegida({ id: 'qualquer', card: 'CARD-1' }), false)
 })
 
 test('selecionarParaPublicar so publica subagente (general-purpose/Explore) enquanto ativo', () => {

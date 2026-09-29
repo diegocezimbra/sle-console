@@ -54,16 +54,40 @@ export function redigirSessoes(sessoesEstado, { agora = Date.now(), janelaAtivaM
 const AGENTES_SUBAGENTE = new Set(['general-purpose', 'Explore'])
 
 /**
+ * Sessão que a janela (de publicação OU de poda) não pode tirar de vista,
+ * mesmo há muito sem evento (revisão do PR #7): a do próprio DEUS -- id em
+ * `estado/deus-session-id` do 00-DEUS, ou `agente:'deus'` quando o hook já
+ * manda o papel -- e qualquer sessão dona de um card em `doing`. As duas
+ * são exatamente os casos em que "sem evento há N h" é sinal de problema
+ * (DEUS trancado, card preso), não de sessão morta -- apagar da vista é
+ * esconder o alarme, não resolvê-lo. Aceita tanto o formato do `Estado`
+ * (`s.id`) quanto o já redigido (`s.sessao`).
+ */
+export function sessaoProtegida(s, { deusSessionId = null, cardsEmDoing = null } = {}) {
+  const id = s.id ?? s.sessao
+  if (deusSessionId && id === deusSessionId) return true
+  if (s.agente === 'deus') return true
+  if (s.card && cardsEmDoing?.has(s.card)) return true
+  return false
+}
+
+/**
  * O que de fato sai no arquivo: descarta quem não deu sinal dentro da
  * janela de publicação (padrão 6h -- histórico de censo, não retrato de
  * agora) e, à parte disso, um subagente (`general-purpose`/`Explore`) só
  * entra enquanto está ativo -- ele nasce e morre dentro de uma tarefa da
  * sessão mãe, e um subagente morto na lista não ajuda ninguém a saber quem
  * trabalha agora. Ativas primeiro: quem lê rola menos pra achar o que importa.
+ * `sessaoProtegida` vence a janela -- fica publicada (como "recentes", com
+ * `ultimo` de horas atrás visível na tela), nunca sai do arquivo.
  */
-export function selecionarParaPublicar(sessoesRedigidas, { agora = Date.now(), janelaPublicacaoMs = JANELA_PUBLICACAO_MS_PADRAO } = {}) {
+export function selecionarParaPublicar(
+  sessoesRedigidas,
+  { agora = Date.now(), janelaPublicacaoMs = JANELA_PUBLICACAO_MS_PADRAO, deusSessionId = null, cardsEmDoing = null } = {}
+) {
   return (sessoesRedigidas ?? [])
     .filter((s) => {
+      if (sessaoProtegida(s, { deusSessionId, cardsEmDoing })) return true
       const inativoMs = s.ultimo ? agora - Date.parse(s.ultimo) : Infinity
       if (!(inativoMs < janelaPublicacaoMs)) return false
       if (AGENTES_SUBAGENTE.has(s.agente) && !s.ativa) return false
@@ -158,10 +182,10 @@ export function criarPublicadorEstado({
   throttleMs = THROTTLE_PADRAO_MS,
 }) {
   let ultimoCommitEm = 0
-  return function publicar({ agora = Date.now() } = {}) {
+  return function publicar({ agora = Date.now(), deusSessionId = null, cardsEmDoing = null } = {}) {
     const snap = estado.snapshot()
     const redigidas = redigirSessoes(snap.sessoes, { agora, janelaAtivaMs })
-    const sessoes = selecionarParaPublicar(redigidas, { agora, janelaPublicacaoMs })
+    const sessoes = selecionarParaPublicar(redigidas, { agora, janelaPublicacaoMs, deusSessionId, cardsEmDoing })
     const eventos = redigirFluxo(snap.fluxo, { limite: limiteEventos })
     const atual = lerEstadoPublico(publicoPath)
     const mudouDeVerdade =

@@ -121,7 +121,10 @@ export function criarDaemon({
   function publicarSessoesLocais() {
     let mudou
     try {
-      ;({ mudou } = publicarEstado())
+      ;({ mudou } = publicarEstado({
+        deusSessionId: lerDeusSessionId(publicarLocal.dataDir),
+        cardsEmDoing: cardsEmDoing(publicarLocal.dataDir),
+      }))
     } catch (erro) {
       registrar({ kind: 'estado-publico.falhou', loop: 'L3', card: null, session: null, payload: { erro: String(erro) } })
       return
@@ -144,11 +147,44 @@ export function criarDaemon({
     : null
   publicarLoop?.unref?.()
 
+  /**
+   * O DEUS não manda evento a cada minuto -- pode passar horas entre um
+   * `deus tokens` e o próximo -- e uma sessão dele podada ou some do censo é
+   * o painel escondendo justo o alarme "DEUS travado" que ele existe pra
+   * mostrar. `estado/deus-session-id` (escrito pelo próprio DEUS no boot) é
+   * a única fonte -- sem arquivo, sem proteção por id; a proteção por
+   * `agente:'deus'` continua valendo (revisão do PR #7).
+   */
+  function lerDeusSessionId(dir) {
+    try {
+      return readFileSync(join(dir, 'estado', 'deus-session-id'), 'utf8').trim() || null
+    } catch {
+      return null
+    }
+  }
+
+  /** Card em `doing` com a sessão dona sem evento há horas é card travado --
+   *  informação que some se a sessão sai do censo antes de alguém ver
+   *  (revisão do PR #7). Falha de leitura vira conjunto vazio, nunca exceção
+   *  -- poda/publish não podem cair por causa de `cards/` ilegível. */
+  function cardsEmDoing(dir) {
+    try {
+      return new Set(indexarCards(dir).cards.filter((c) => c.coluna === 'doing').map((c) => c.id))
+    } catch {
+      return new Set()
+    }
+  }
+
   // Poda periódica do índice em memória (CARD-120c) -- de hora em hora, não
   // a cada evento: é limpeza de fundo, não precisa reagir na hora, e rodar
   // menos vezes custa menos CPU num daemon que já reconstrói do zero a cada
-  // boot.
-  const podaLoop = setInterval(() => estado.podar(), 60 * 60_000)
+  // boot. Lê a proteção do MESMO diretório que o publish-loop (o repositório
+  // dono do censo quando existe; senão o próprio projeto observado).
+  const dirDeProtecao = publicarLocal?.dataDir ?? projeto
+  const podaLoop = setInterval(
+    () => estado.podar({ deusSessionId: lerDeusSessionId(dirDeProtecao), cardsEmDoing: cardsEmDoing(dirDeProtecao) }),
+    60 * 60_000
+  )
   podaLoop.unref?.()
 
   /** Lado do console em modo git: lê o arquivo que a máquina local publicou

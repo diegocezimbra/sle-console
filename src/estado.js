@@ -8,6 +8,8 @@
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+import { sessaoProtegida } from './estadoPublico.js'
+
 export class Estado {
   #janela
 
@@ -39,9 +41,12 @@ export class Estado {
    * NENHUM evento há mais de `maxIdadeSessaoMs` (padrão 24h). Não mexe no
    * `events.jsonl` -- só no `Map` que `snapshot()`/`publicar()` leem --
    * então uma sessão podada que voltar a mandar evento reaparece normalmente.
+   * `deusSessionId`/`cardsEmDoing` (revisão do PR #7) marcam quem a idade
+   * sozinha não pode apagar -- ver `sessaoProtegida` em `estadoPublico.js`.
    */
-  podar({ agora = Date.now(), maxIdadeMs = this.#maxIdadeSessaoMs } = {}) {
+  podar({ agora = Date.now(), maxIdadeMs = this.#maxIdadeSessaoMs, deusSessionId = null, cardsEmDoing = null } = {}) {
     for (const [id, s] of this.sessoes) {
+      if (sessaoProtegida(s, { deusSessionId, cardsEmDoing })) continue
       const idadeMs = s.ultimo ? agora - Date.parse(s.ultimo) : Infinity
       if (idadeMs > maxIdadeMs) this.sessoes.delete(id)
     }

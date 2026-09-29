@@ -154,3 +154,32 @@ test('podar nao mexe em sessao dentro do prazo', () => {
   e.podar({ maxIdadeMs: 24 * 3600_000 })
   assert.equal(e.snapshot().sessoes.length, 1)
 })
+
+// Revisao do PR #7: idade sozinha nao pode apagar a sessao do DEUS nem a
+// dona de um card em `doing` -- sao exatamente os casos em que "sem evento
+// ha N h" e sinal de problema (DEUS travado, card preso), nao de sessao
+// morta.
+test('podar nao apaga a sessao do DEUS (por id nem por agente), mesmo bem velha', () => {
+  const agora = Date.now()
+  const antiga = new Date(agora - 30 * 3600_000).toISOString()
+  const ePorId = new Estado(dir())
+  ePorId.registrar(ev({ session: 'deus-abc', ts: antiga }))
+  ePorId.podar({ agora, maxIdadeMs: 24 * 3600_000, deusSessionId: 'deus-abc' })
+  assert.equal(ePorId.snapshot().sessoes.length, 1, 'protegida por id')
+
+  const ePorAgente = new Estado(dir())
+  ePorAgente.registrar(ev({ session: 'x', agent: 'deus', ts: antiga }))
+  ePorAgente.podar({ agora, maxIdadeMs: 24 * 3600_000 })
+  assert.equal(ePorAgente.snapshot().sessoes.length, 1, 'protegida por agente:deus')
+})
+
+test('podar nao apaga sessao dona de card em doing, mesmo sem evento ha dias', () => {
+  const e = new Estado(dir())
+  const agora = Date.now()
+  e.registrar(ev({ session: 'presa', card: 'CARD-042', ts: new Date(agora - 72 * 3600_000).toISOString() }))
+  e.podar({ agora, maxIdadeMs: 24 * 3600_000, cardsEmDoing: new Set(['CARD-042']) })
+  assert.equal(e.snapshot().sessoes.length, 1)
+  // Card FORA de doing (ou sem a protecao) volta a podar normalmente.
+  e.podar({ agora, maxIdadeMs: 24 * 3600_000, cardsEmDoing: new Set() })
+  assert.equal(e.snapshot().sessoes.length, 0)
+})
