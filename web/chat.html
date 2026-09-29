@@ -2,9 +2,11 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
 <title>Chat com o DEUS</title>
 <link rel="stylesheet" href="/chat.css" />
+<!-- CARD-094: barra de abas do celular (Chat, Pendentes, Quadro, Busca); so em tela pequena -->
+<link rel="stylesheet" href="/mobile/mobile.css" media="(max-width: 767px), (pointer: coarse) and (max-height: 500px)" />
 </head>
 <body>
 <header>
@@ -15,11 +17,19 @@
 <main id="thread" aria-live="polite" tabindex="-1">
   <p id="carregando" class="aviso">carregando…</p>
 </main>
+<ul id="previa" class="previa" aria-label="Fotos para enviar" hidden></ul>
 <form id="envio">
+  <button type="button" id="anexar" class="anexar" aria-label="Anexar foto" aria-haspopup="menu" aria-expanded="false"></button>
+  <div id="anexar-menu" class="anexar-menu" role="menu" aria-label="Anexar" hidden>
+    <button type="button" role="menuitem" data-fonte="camera">Tirar foto</button>
+    <button type="button" role="menuitem" data-fonte="galeria">Escolher da galeria</button>
+  </div>
   <textarea id="texto" rows="1" placeholder="Mensagem (Enter envia, Shift+Enter quebra linha)" aria-label="mensagem" maxlength="20000"></textarea>
   <button type="submit">Enviar</button>
 </form>
 <p id="erro" class="erro" role="alert" hidden></p>
+<div id="m-tabs" class="m-tabs" hidden></div>
 <script type="module" src="/chat.js"></script>
+<script type="module" src="/mobile/chat-nav.js"></script>
 </body>
 </html>

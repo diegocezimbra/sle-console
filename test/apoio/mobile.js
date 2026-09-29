@@ -84,3 +84,11 @@ export async function deslizar(browser, { x = 320, y = 420, dx = -260, passos = 
   }
   await browser.chamar('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
 }
+
+/** Escolhe arquivo(s) num <input type=file> como o seletor do sistema faria (dispara `change`). */
+export async function escolherArquivo(browser, selector, caminhos) {
+  const { root } = await browser.chamar('DOM.getDocument', { depth: 0 })
+  const { nodeId } = await browser.chamar('DOM.querySelector', { nodeId: root.nodeId, selector })
+  if (!nodeId) throw new Error(`nao achei ${selector}`)
+  await browser.chamar('DOM.setFileInputFiles', { nodeId, files: caminhos })
+}

@@ -28,3 +28,31 @@ h1{font-size:14px;margin:0;letter-spacing:.1em}
 #envio button{background:var(--link);color:#04121c;border:0;border-radius:10px;padding:0 18px;font:inherit;font-weight:600;min-height:44px}
 .erro{margin:0;padding:6px 12px;color:var(--erro);font-size:13px}
 @media (min-width:900px){#thread{padding:16px 10%}}
+
+/* CARD-094: campo de mensagem sempre visivel no rodape, anexo de foto (camera/galeria) e barra de abas */
+#envio{position:relative;align-items:flex-end}
+#envio #texto{min-height:44px}
+#envio .anexar{flex:none;display:inline-flex;align-items:center;justify-content:center;width:44px;min-height:44px;padding:0;border:1px solid var(--borda);background:var(--painel);color:var(--fraco)}
+#envio .anexar:hover,#envio .anexar[aria-expanded="true"]{color:var(--texto)}
+#envio .anexar-menu{position:absolute;left:12px;bottom:calc(100% + 6px);z-index:5;display:flex;flex-direction:column;min-width:230px;padding:6px;border:1px solid var(--borda);border-radius:12px;background:var(--painel);box-shadow:0 8px 24px rgba(0,0,0,.4)}
+#envio .anexar-menu button{min-height:48px;padding:0 14px;border-radius:8px;background:none;color:var(--texto);font-weight:500;text-align:left}
+#envio .anexar-menu button:hover,#envio .anexar-menu button:focus-visible{background:var(--fundo)}
+.previa{display:flex;gap:10px;margin:0;padding:10px 14px 2px;list-style:none;overflow-x:auto;border-top:1px solid var(--borda)}
+.previa-item{position:relative;flex:none}
+.previa-item img{display:block;width:72px;height:72px;object-fit:cover;border-radius:10px;border:1px solid var(--borda)}
+.previa-remover{position:absolute;top:-8px;right:-8px;width:28px;height:28px;padding:0;border:1px solid var(--borda);border-radius:50%;background:var(--painel);color:var(--texto);font-size:13px;line-height:1;cursor:pointer}
+.previa-remover::after{content:"";position:absolute;inset:-8px}
+.msg .anexos{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.msg .anexo{display:block;max-width:100%}
+.msg .anexo img{display:block;max-width:100%;height:auto;max-height:280px;border-radius:8px;background:#0006}
+@media (max-width:767px),(pointer:coarse) and (max-height:500px){
+  /* O corpo vira uma camada fixa que acompanha a area visivel (teclado aberto): o campo nunca some. */
+  html,body{overflow:hidden;overscroll-behavior:none}
+  /* Abaixo de 16 px o iOS da zoom na pagina ao focar o campo. */
+  #texto,#busca{font-size:16px}
+  body{position:fixed;top:0;right:0;bottom:0;left:0;height:auto}
+  /* Com a barra de abas embaixo, o recuo da area segura e dela; ao digitar a barra some e o recuo volta para o campo. */
+  body:has(#m-tabs:not([hidden])) #envio{padding-bottom:10px}
+  body:has(#texto:focus) #m-tabs{display:none}
+  body:has(#texto:focus) #envio{padding-bottom:max(10px,env(safe-area-inset-bottom))}
+}

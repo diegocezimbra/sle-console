@@ -1,5 +1,6 @@
 import { renderMarkdown } from './chat-md.js'
 import { insertIndex, sinceWithLookback, splitLate } from './chat-order.js'
+import { attachmentsOf, mountAttachments, textWithoutCitations } from './chat-anexos.js'
 
 const $ = (id) => document.getElementById(id)
 const thread = $('thread')
@@ -55,8 +56,10 @@ function balao(m, destaque = false) {
   }
   const corpo = document.createElement('div')
   corpo.className = 'corpo'
-  corpo.innerHTML = renderMarkdown(m.texto)
+  corpo.innerHTML = renderMarkdown(textWithoutCitations(m))
   el.append(meta, corpo)
+  const anexos = attachmentsOf(m) // CARD-094: miniaturas das imagens da mensagem
+  if (anexos) el.append(anexos)
   return el
 }
 
@@ -156,8 +159,15 @@ async function enviar(texto) {
   const erro = $('erro')
   erro.hidden = true
   erro.textContent = ''
+  const botao = $('envio').querySelector('button[type=submit]')
+  botao.disabled = true
   try {
-    const { mensagem, aviso: alerta } = await api('/api/chat', { method: 'POST', body: JSON.stringify({ texto }) })
+    // CARD-094: com foto anexada vai pela rota de imagens (texto + ate 4 fotos); sem foto, a de sempre.
+    const anexos = files.count() ? await files.take() : null
+    const { mensagem, aviso: alerta } = anexos
+      ? await api('/api/chat/attachments', { method: 'POST', body: JSON.stringify({ texto, anexos }) })
+      : await api('/api/chat', { method: 'POST', body: JSON.stringify({ texto }) })
+    files.clear()
     if (alerta === 'secret') {
       erro.textContent = 'Parece conter segredo; o DEUS não vai repetir. A mensagem foi enviada, considere rotacionar a credencial.'
       erro.hidden = false
@@ -174,6 +184,8 @@ async function enviar(texto) {
   } catch (e) {
     erro.textContent = e.message
     erro.hidden = false
+  } finally {
+    botao.disabled = false
   }
 }
 
@@ -212,9 +224,14 @@ $('texto').addEventListener('keydown', (e) => {
 $('envio').addEventListener('submit', (e) => {
   e.preventDefault()
   const texto = $('texto').value.trim()
-  if (texto) enviar(texto)
+  if (texto || files.count()) enviar(texto)
 })
 thread.addEventListener('scroll', () => { if (thread.scrollTop < 120) carregarAntigas() })
+
+const files = mountAttachments({
+  button: $('anexar'), menu: $('anexar-menu'), preview: $('previa'),
+  notify: (texto) => { $('erro').textContent = texto; $('erro').hidden = false },
+})
 
 carregarInicial().catch((e) => { aviso(`falha ao carregar: ${e.message}`) })
 setInterval(buscarNovas, POLL_MS)

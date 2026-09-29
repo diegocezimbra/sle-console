@@ -4,7 +4,7 @@
  * Sem dependencia; o daemon decide quando commitar/empurrar.
  */
 import { randomUUID } from 'node:crypto'
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 export const AUTHORS = ['diego', 'deus']
@@ -131,11 +131,18 @@ function normaliza(t) {
   return String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
 }
 
-/** Acrescenta uma mensagem (segredo: aviso por padrao, 422 com `blockSecret`); devolve o caminho relativo a `root` para o commit. */
-export function append(root, { de, texto, agora = new Date(), blockSecret = false }) {
+/**
+ * Acrescenta uma mensagem (segredo: aviso por padrao, 422 com `blockSecret`); devolve o caminho relativo
+ * a `root` para o commit (`file`) e todos os que entram nele (`paths`: o jsonl e as imagens).
+ *
+ * `files` (CARD-094) sao imagens ja validadas por `decodeAttachments`: gravadas em
+ * `chat/anexos/<dia>/<id>-<n>.<ext>`, listadas em `message.anexos` (para a tela) e citadas no texto como
+ * `[anexo: <caminho>]` (para quem le so o jsonl, como `deus chat`).
+ */
+export function append(root, { de, texto, agora = new Date(), blockSecret = false, files = [] }) {
   if (!AUTHORS.includes(de)) return { ok: false, code: 422, error: 'autor invalido' }
   const limpo = String(texto ?? '').trim()
-  if (!limpo) return { ok: false, code: 422, error: 'texto obrigatorio' }
+  if (!limpo && !files.length) return { ok: false, code: 422, error: 'texto obrigatorio' }
   if (limpo.length > MAX_TEXT_LENGTH) {
     return { ok: false, code: 422, error: `texto acima de ${MAX_TEXT_LENGTH} caracteres` }
   }
@@ -144,9 +151,17 @@ export function append(root, { de, texto, agora = new Date(), blockSecret = fals
     return { ok: false, code: 422, error: 'a mensagem parece conter token ou senha; o chat vai para o git, nao envie segredo' }
   }
   const ts = agora.toISOString()
-  const message = { ts, de, texto: limpo, id: `${ts.replace(/\D/g, '').slice(0, 17)}-${randomUUID().slice(0, 8)}` }
+  const id = `${ts.replace(/\D/g, '').slice(0, 17)}-${randomUUID().slice(0, 8)}`
   const relativo = join('chat', `${ts.slice(0, 10)}.jsonl`)
+  const anexos = files.map((f, i) => ({ arquivo: join('chat', 'anexos', ts.slice(0, 10), `${id}-${i + 1}.${f.ext}`), tipo: f.type, bytes: f.bytes.length, ...(f.width && { largura: f.width, altura: f.height }) }))
+  const citacao = anexos.map((a) => `[anexo: ${a.arquivo}]`).join('\n')
+  const message = { ts, de, texto: [limpo, citacao].filter(Boolean).join('\n\n'), id, ...(anexos.length && { anexos }) }
+  // Imagem antes da linha: quem ve a mensagem no jsonl nunca acha um caminho que ainda nao existe.
+  files.forEach((f, i) => {
+    mkdirSync(join(root, anexos[i].arquivo, '..'), { recursive: true })
+    writeFileSync(join(root, anexos[i].arquivo), f.bytes)
+  })
   mkdirSync(dirChat(root), { recursive: true })
   appendFileSync(join(root, relativo), JSON.stringify(message) + '\n')
-  return { ok: true, message, file: relativo, ...(secret && { warning: 'secret' }) }
+  return { ok: true, message, file: relativo, paths: [relativo, ...anexos.map((a) => a.arquivo)], ...(secret && { warning: 'secret' }) }
 }

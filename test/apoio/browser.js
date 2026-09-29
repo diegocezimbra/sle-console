@@ -112,6 +112,8 @@ export async function abrirBrowser() {
     async celular(width = 390, height = 844) {
       await chamar('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 2, mobile: true })
       await chamar('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 })
+      // O Chrome headless nao se considera "em foco": sem isto `:focus`, `:focus-within` e `document.hasFocus()` mentem.
+      await chamar('Emulation.setFocusEmulationEnabled', { enabled: true })
     },
     /** Comando CDP cru (ex.: `Input.synthesizeScrollGesture` para deslizar com o dedo). */
     chamar,
