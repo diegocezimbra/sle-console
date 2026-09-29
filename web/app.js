@@ -5,10 +5,35 @@ const COLUNAS = ['backlog', 'pendente-diego', 'refinamento', 'aprovado', 'doing'
 const ROTULOS = { 'pendente-diego': 'Pendentes do Diego' }
 const eventos = []
 let indice = { board: {}, cards: [] }
-// Filtro de prioridade do board (CARD-120). 'todas' nunca esconde nada --
-// selecionar um P específico é uma escolha explícita de quem está olhando.
+// Filtro de prioridade do board (CARD-120). Conjunto vazio == "todas" --
+// nunca esconde nada; marcar um ou mais P's é escolha explícita de quem olha.
+// Rótulo e cor duplicam src/prioridade.js e style.css de propósito: a tela é
+// HTML/JS puro, sem bundler, então não há como importar o módulo do servidor
+// aqui -- o mapa é pequeno e os 3 lugares mudam juntos (Boy Scout se um dia
+// isso ganhar build step).
 const PRIORIDADES = ['P-1', 'P0', 'P1', 'P2', 'P3']
-let filtroPrioridade = 'todas'
+const ROTULOS_PRIORIDADE = { 'P-1': 'URGENTE', P0: 'ALTÍSSIMA', P1: 'ALTA', P2: 'MÉDIA', P3: 'BAIXA' }
+const CORES_PRIORIDADE = { 'P-1': '#7f1d1d', P0: '#b91c1c', P1: '#c2410c', P2: '#a16207', P3: '#4b5563' }
+
+/** `?p=P0,P1` -> `Set(['P0','P1'])`; querystring ausente ou só lixo == "todas". */
+function lerFiltroPrioridadeDaUrl() {
+  const bruto = new URL(location.href).searchParams.get('p')
+  if (!bruto) return new Set()
+  return new Set(
+    bruto.split(',').map((s) => s.trim().toUpperCase()).filter((p) => PRIORIDADES.includes(p))
+  )
+}
+
+/** Grava o filtro atual em `?p=...` sem mexer no resto da URL (projeto, aba) e
+ *  sem empilhar histórico -- um clique no chip não é uma navegação. */
+function escreverFiltroPrioridadeNaUrl() {
+  const url = new URL(location.href)
+  if (filtroPrioridade.size) url.searchParams.set('p', [...filtroPrioridade].join(','))
+  else url.searchParams.delete('p')
+  history.replaceState({}, '', url.pathname + url.search)
+}
+
+let filtroPrioridade = lerFiltroPrioridadeDaUrl()
 // Projeto observado. Vai em toda chamada de leitura, para a tela nunca mostrar
 // o board de um projeto com o git de outro.
 let projetoAtual = null
@@ -239,22 +264,56 @@ function pintarForaDoBoard(sessoes) {
   )
 }
 
+/** Quantos cards (de todas as colunas) tem cada P -- o número no chip é a
+ *  resposta direta a "cadê as de prioridade alta?": não precisa abrir nada
+ *  pra saber se tem 1 ou 20. */
+function contarPorPrioridade() {
+  const contagem = Object.fromEntries(PRIORIDADES.map((p) => [p, 0]))
+  for (const c of indice.cards ?? []) {
+    const p = c.prioridade ?? 'P3'
+    if (p in contagem) contagem[p]++
+  }
+  return contagem
+}
+
+function alternarFiltroPrioridade(p) {
+  if (p == null) filtroPrioridade.clear()
+  else if (filtroPrioridade.has(p)) filtroPrioridade.delete(p)
+  else filtroPrioridade.add(p)
+  escreverFiltroPrioridadeNaUrl()
+  pintarBoard()
+}
+
 function montarFiltroPrioridade() {
-  const sel = $('filtro-prioridade')
-  if (!sel || sel.dataset.montado) return
-  sel.dataset.montado = '1'
-  sel.append(new Option('todas as prioridades', 'todas'))
-  for (const p of PRIORIDADES) sel.append(new Option(p, p))
-  sel.value = filtroPrioridade
-  sel.addEventListener('change', () => {
-    filtroPrioridade = sel.value
-    pintarBoard()
+  const cont = $('filtro-prioridade')
+  if (!cont) return
+  const contagem = contarPorPrioridade()
+  const total = (indice.cards ?? []).length
+
+  const todas = document.createElement('button')
+  todas.type = 'button'
+  todas.className = 'chip-prioridade chip-todas'
+  todas.textContent = `todas (${total})`
+  todas.setAttribute('aria-pressed', String(filtroPrioridade.size === 0))
+  todas.addEventListener('click', () => alternarFiltroPrioridade(null))
+
+  const chips = PRIORIDADES.map((p) => {
+    const b = document.createElement('button')
+    b.type = 'button'
+    b.className = `chip-prioridade prioridade-${p}`
+    b.title = p
+    b.dataset.p = p
+    b.textContent = `${ROTULOS_PRIORIDADE[p]} (${contagem[p]})`
+    b.setAttribute('aria-pressed', String(filtroPrioridade.has(p)))
+    b.addEventListener('click', () => alternarFiltroPrioridade(p))
+    return b
   })
+  cont.replaceChildren(todas, ...chips)
 }
 
 function pintarBoard() {
   montarFiltroPrioridade()
-  const passaNoFiltro = (c) => filtroPrioridade === 'todas' || (c.prioridade ?? 'P3') === filtroPrioridade
+  const passaNoFiltro = (c) => filtroPrioridade.size === 0 || filtroPrioridade.has(c.prioridade ?? 'P3')
   $('colunas').replaceChildren(
     ...COLUNAS.map((coluna) => {
       const cards = (indice.board?.[coluna] ?? []).filter(passaNoFiltro)
@@ -272,18 +331,31 @@ function pintarBoard() {
   )
 }
 
+/** O selo grande e colorido (CARD-120) -- mesmo elemento no card e no modal,
+ *  só muda a posição (absoluta no card, inline no modal, via CSS). */
+function seloPrioridade(p) {
+  const s = campo(`selo-prioridade prioridade-${p}`, ROTULOS_PRIORIDADE[p] ?? p)
+  s.title = p
+  return s
+}
+
 function botaoDeCard(c) {
   // Link de verdade: Ctrl+clique/clique do meio abre em nova guia sozinho,
   // sem JS nenhum. Clique normal intercepta e abre o modal.
+  const p = c.prioridade ?? 'P3'
   const b = document.createElement('a')
   b.href = `/card/${encodeURIComponent(c.id)}`
   b.className = `card risco-${c.risk ?? 'baixo'}`
   b.dataset.card = c.id
+  // A cor da borda é da prioridade, não do risco (CARD-120) -- inline pra
+  // vencer a cor de risco do CSS sem precisar tirar a classe risco-* do card
+  // (outro teste do board depende de achá-la).
+  b.style.borderLeftColor = CORES_PRIORIDADE[p] ?? CORES_PRIORIDADE.P3
   // Na visão de todos, o card diz de que projeto veio.
   const filhos = []
   if (c.coluna === 'pendente-diego') filhos.push(campo('selo-decisao', 'AGUARDA VOCÊ'))
   filhos.push(
-    campo('selo-prioridade', c.prioridade ?? 'P3'),
+    seloPrioridade(p),
     campo('cid', c.rotuloProjeto ? `${c.rotuloProjeto} · ${c.id}` : c.id),
     campo('titulo', c.title ?? '')
   )
@@ -432,7 +504,7 @@ async function abrirCard(id) {
   if (c.owner) chips.push(chip(c.owner))
   const prazo = formatarQuandoPrazo(c.prazo)
   if (prazo) chips.push(chip(`prazo ${prazo}`))
-  if (c.prioridade) chips.push(chip(c.prioridade))
+  if (c.prioridade) chips.push(seloPrioridade(c.prioridade))
   if (c.modelo) chips.push(chip(c.modelo))
   $('modal-meta').replaceChildren(...chips)
 

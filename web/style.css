@@ -1,5 +1,9 @@
 :root{--fundo:#0f1115;--painel:#171a21;--borda:#252a34;--texto:#d7dae0;--fraco:#8b93a1;
---l1:#4aa3df;--l2:#c08b3e;--l3:#7b5ec7;--ok:#4f9d69;--erro:#c25450}
+--l1:#4aa3df;--l2:#c08b3e;--l3:#7b5ec7;--ok:#4f9d69;--erro:#c25450;
+/* Cores de prioridade (CARD-120) -- tom escolhido pra bater 4.5:1 com texto
+   branco em cima (AA, texto pequeno em negrito): vermelho mais escuro no
+   P-1 que no P0 pra "URGENTE" e "ALTÍSSIMA" nao parecerem o mesmo alarme. */
+--pri-p-1:#7f1d1d;--pri-p0:#b91c1c;--pri-p1:#c2410c;--pri-p2:#a16207;--pri-p3:#4b5563;--pri-texto:#fff}
 *{box-sizing:border-box}
 /* Uma regra de display com seletor de id vence o `hidden` do browser -- sem
    isto a tela "escondida" continua na tela, e a propriedade .hidden mente. */
@@ -37,11 +41,11 @@ border-bottom:1px solid var(--borda)}
 .coluna>div{overflow:auto;display:flex;flex-direction:column;gap:8px}
 /* O card é um <a> por baixo (nova guia funciona sem JS), mas não pode SE LER
    como link: sem cor de link, sem sublinhado, texto no tom normal da tela. */
-.card{background:var(--fundo);border:1px solid var(--borda);border-left-width:3px;border-radius:4px;
-padding:12px;cursor:pointer;text-align:left;color:var(--texto);font:13px/1.4 -apple-system,
-'Segoe UI',Roboto,Inter,sans-serif;width:100%;display:block;text-decoration:none;
-transition:border-color .12s,transform .12s}
-.card:hover,.card:focus-visible{border-color:var(--l1);text-decoration:none;transform:translateY(-1px)}
+.card{position:relative;background:var(--fundo);border:1px solid var(--borda);border-left-width:4px;
+border-radius:4px;padding:12px 84px 12px 12px;cursor:pointer;text-align:left;color:var(--texto);
+font:13px/1.4 -apple-system,'Segoe UI',Roboto,Inter,sans-serif;width:100%;display:block;
+text-decoration:none;transition:border-color .12s,transform .12s}
+.card:hover,.card:focus-visible{transform:translateY(-1px)}
 .card:visited{color:var(--texto)}
 .card .cid{color:var(--fraco);font-size:11px;display:block;margin-bottom:4px;
 font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;text-decoration:none}
@@ -50,19 +54,40 @@ font-size:14px;font-weight:600;line-height:1.35;color:var(--texto)}
 .card.risco-alto{border-left-color:var(--erro)}
 .card.risco-medio{border-left-color:var(--l2)}
 .card.risco-baixo{border-left-color:var(--ok)}
+/* A prioridade é quem manda na borda esquerda (CARD-120: "cadê as de
+   prioridade alta?") -- o JS seta `style.borderLeftColor` por P, que como
+   estilo inline vence a cor de risco de cima sem precisar apagar a classe
+   risco-* (outro teste depende dela existir no card). */
 /* Selo da coluna do Diego -- diz "precisa de você" sem repetir isso no título
    de cada card, um por um. */
 .card .selo-decisao{display:inline-block;margin-bottom:6px;padding:1px 8px;border-radius:999px;
 font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
 color:var(--fundo);background:var(--l2)}
-/* Etiqueta de prioridade (CARD-120) -- mesmo peso visual do selo de decisão,
-   cor neutra: prioridade não é alarme, é ordem. */
-.card .selo-prioridade{display:inline-block;margin:0 6px 6px 0;padding:1px 6px;border-radius:4px;
-font-size:10px;font-weight:600;letter-spacing:.03em;
-color:var(--fraco);background:var(--painel);border:1px solid var(--borda)}
-.filtro-prioridade-label{display:flex;align-items:center;gap:6px;margin:0 0 12px;font-size:12px;color:var(--fraco)}
-.filtro-prioridade-label select{background:var(--painel);color:var(--texto);border:1px solid var(--borda);
-border-radius:4px;padding:2px 6px}
+/* Etiqueta de prioridade (CARD-120): grande, colorida por P, sempre no canto
+   superior direito -- é a primeira coisa que o olho tem que achar no card. */
+.selo-prioridade{position:absolute;top:8px;right:8px;display:inline-flex;align-items:center;
+padding:3px 9px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:.03em;
+text-transform:uppercase;color:var(--pri-texto);background:var(--pri-p3);line-height:1.2}
+.selo-prioridade.prioridade-P-1{background:var(--pri-p-1)}
+.selo-prioridade.prioridade-P0{background:var(--pri-p0)}
+.selo-prioridade.prioridade-P1{background:var(--pri-p1)}
+.selo-prioridade.prioridade-P2{background:var(--pri-p2)}
+.selo-prioridade.prioridade-P3{background:var(--pri-p3)}
+/* No modal o selo não é absoluto -- entra na linha de chips como qualquer outro. */
+.modal-meta .selo-prioridade{position:static}
+.filtro-prioridade-label{display:flex;align-items:center;gap:8px;margin:0 0 12px;font-size:12px;color:var(--fraco)}
+.filtro-prioridade{display:flex;flex-wrap:wrap;gap:6px}
+.chip-prioridade{font:inherit;font-size:11px;font-weight:700;letter-spacing:.02em;
+padding:3px 10px;border-radius:999px;cursor:pointer;background:var(--painel);
+color:var(--fraco);border:1px solid var(--borda)}
+.chip-prioridade:hover{color:var(--texto)}
+.chip-prioridade[aria-pressed="true"]{color:var(--pri-texto);border-color:transparent}
+.chip-prioridade.chip-todas[aria-pressed="true"]{background:var(--l1)}
+.chip-prioridade.prioridade-P-1[aria-pressed="true"]{background:var(--pri-p-1)}
+.chip-prioridade.prioridade-P0[aria-pressed="true"]{background:var(--pri-p0)}
+.chip-prioridade.prioridade-P1[aria-pressed="true"]{background:var(--pri-p1)}
+.chip-prioridade.prioridade-P2[aria-pressed="true"]{background:var(--pri-p2)}
+.chip-prioridade.prioridade-P3[aria-pressed="true"]{background:var(--pri-p3)}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;
 justify-content:center;z-index:50}
 .modal-overlay[hidden]{display:none}

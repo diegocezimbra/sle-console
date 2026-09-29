@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { normalizarPrioridade, pesoPrioridade, ordenarPorPrioridade } from '../src/prioridade.js'
+import { normalizarPrioridade, pesoPrioridade, ordenarPorPrioridade, rotuloPrioridade } from '../src/prioridade.js'
 
 test('normalizarPrioridade aceita o formato P<n> direto, inclusive negativo', () => {
   assert.equal(normalizarPrioridade('P0'), 'P0')
@@ -47,6 +47,18 @@ test('ordenarPorPrioridade e estavel entre cards do mesmo P', () => {
     { id: 'c', prioridade: 'P1' },
   ]
   assert.deepEqual(ordenarPorPrioridade(cards).map((c) => c.id), ['a', 'b', 'c'])
+})
+
+test('CARD-120: rotuloPrioridade da o rotulo humano dos 5 P que o board mostra', () => {
+  assert.equal(rotuloPrioridade('P-1'), 'URGENTE')
+  assert.equal(rotuloPrioridade('P0'), 'ALTÍSSIMA')
+  assert.equal(rotuloPrioridade('P1'), 'ALTA')
+  assert.equal(rotuloPrioridade('P2'), 'MÉDIA')
+  assert.equal(rotuloPrioridade('P3'), 'BAIXA')
+})
+
+test('rotuloPrioridade: P fora do mapa conhecido cai no proprio codigo', () => {
+  assert.equal(rotuloPrioridade('P9'), 'P9')
 })
 
 test('ordenarPorPrioridade nao muda o array original', () => {

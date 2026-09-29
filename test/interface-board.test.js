@@ -66,25 +66,34 @@ test('CARD-120: card sem prioridade mostra P3 e legado "urgente" mostra P0, orde
   const posUrgente = backlog.indexOf('CARD-008')
   const posSemP = backlog.indexOf('CARD-007')
   assert.ok(posUrgente >= 0 && posSemP >= 0 && posUrgente < posSemP, 'P0 (urgente) vem antes de P3 (sem prioridade)')
+  // CARD-120 (etiquetas): o selo mostra o rótulo humano, não o código cru --
+  // "cadê as de prioridade alta?" só tem resposta óbvia se o board FALA a
+  // prioridade, não só codifica em P<n>. O título ainda leva o código (title).
   const seloUrgente = await browser.avaliar(
     `document.querySelector('#tela-board [data-card="CARD-008"] .selo-prioridade').textContent`)
-  assert.equal(seloUrgente, 'P0')
+  assert.equal(seloUrgente, 'ALTÍSSIMA')
+  const tituloUrgente = await browser.avaliar(
+    `document.querySelector('#tela-board [data-card="CARD-008"] .selo-prioridade').title`)
+  assert.equal(tituloUrgente, 'P0')
   const seloSemP = await browser.avaliar(
     `document.querySelector('#tela-board [data-card="CARD-007"] .selo-prioridade').textContent`)
-  assert.equal(seloSemP, 'P3')
+  assert.equal(seloSemP, 'BAIXA')
 })
 
 test('CARD-120: filtro de prioridade esconde os cards que nao sao do P escolhido', { skip: pular }, async () => {
-  await browser.avaliar(`document.getElementById('filtro-prioridade').value = 'P0'`)
-  await browser.avaliar(`document.getElementById('filtro-prioridade').dispatchEvent(new Event('change'))`)
+  await browser.avaliar(
+    `document.querySelector('#filtro-prioridade [data-p="P0"]').click()`)
   await browser.esperar(`!document.querySelector('#tela-board [data-card="CARD-007"]')`)
   const backlog = await browser.avaliar(
     `document.querySelector('#tela-board .coluna[data-coluna="backlog"]').textContent`)
   assert.match(backlog, /CARD-008/)
   assert.doesNotMatch(backlog, /CARD-007/)
+  assert.equal(
+    await browser.avaliar(`document.querySelector('#filtro-prioridade [data-p="P0"]').getAttribute('aria-pressed')`),
+    'true'
+  )
   // devolve o filtro pro estado default -- os testes seguintes contam com "todas".
-  await browser.avaliar(`document.getElementById('filtro-prioridade').value = 'todas'`)
-  await browser.avaliar(`document.getElementById('filtro-prioridade').dispatchEvent(new Event('change'))`)
+  await browser.avaliar(`document.querySelector('#filtro-prioridade .chip-todas').click()`)
   await browser.esperar(`!!document.querySelector('#tela-board [data-card="CARD-007"]')`)
 })
 
