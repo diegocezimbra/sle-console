@@ -506,27 +506,28 @@ function capturarOrigemDoModal() {
 }
 
 // Quem tinha o foco antes do modal (o card clicado): recebe o foco de volta ao fechar.
-let focoAntesDoModal = null
+let focusBeforeModal = null
 
-const SELETOR_FOCAVEL = 'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])'
+const FOCUSABLE_SELECTOR = 'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])'
 
-function focaveisDoModal() {
-  return [...$('modal-card').querySelectorAll(SELETOR_FOCAVEL)].filter((e) => e.offsetParent !== null)
+function modalFocusables() {
+  return [...$('modal-card').querySelectorAll(FOCUSABLE_SELECTOR)].filter((e) => e.offsetParent !== null)
 }
 
 /** Mostra o modal e leva o foco pra dentro (no ✕: o alvo mais seguro). */
-function exibirModal() {
-  if ($('modal-card').hidden) {
+function showModal() {
+  const wasHidden = $('modal-card').hidden
+  if (wasHidden) {
     const ativo = document.activeElement
-    focoAntesDoModal = ativo && ativo !== document.body ? ativo : null
+    focusBeforeModal = ativo && ativo !== document.body ? ativo : null
   }
   $('modal-card').hidden = false
-  $('modal-fechar').focus()
+  if (wasHidden) $('modal-fechar').focus()
 }
 
 /** Tab/Shift+Tab circulam dentro do modal em vez de escapar pro board. */
-function prenderFoco(ev) {
-  const f = focaveisDoModal()
+function trapFocus(ev) {
+  const f = modalFocusables()
   if (!f.length) return
   const primeiro = f[0]
   const ultimo = f[f.length - 1]
@@ -540,9 +541,9 @@ function prenderFoco(ev) {
   }
 }
 
-function devolverFoco() {
-  const alvo = focoAntesDoModal
-  focoAntesDoModal = null
+function restoreFocus() {
+  const alvo = focusBeforeModal
+  focusBeforeModal = null
   if (!alvo) return
   // O board pode ter sido repintado (SSE) e o nó antigo saiu do DOM: acha o card pelo id.
   const vivo = alvo.isConnected ? alvo : alvo.dataset?.card
@@ -585,7 +586,7 @@ async function abrirCard(id) {
   pintarRespostas(c)
   pintarSeletorOpcoes(c)
   $('modal-resolver').hidden = c.coluna !== 'pendente-diego'
-  exibirModal()
+  showModal()
 }
 
 /** Card não achado ou rede falhou: o modal abre mesmo assim, com o ✕ vivo --
@@ -601,13 +602,13 @@ function erroDeCard(id) {
   $('modal-respostas').replaceChildren()
   $('modal-resposta-opcoes').replaceChildren()
   document.querySelector('.modal-resposta').hidden = true
-  exibirModal()
+  showModal()
 }
 
 function fecharModal() {
   document.querySelector('.modal-resposta').hidden = false
   $('modal-card').hidden = true
-  devolverFoco()
+  restoreFocus()
   cardAberto = null
   // Só mexe na URL se ela ainda for a do card -- um fechamento por popstate já
   // chegou com a URL de destino trocada pelo próprio navegador.
@@ -689,7 +690,7 @@ $('modal-card').addEventListener('click', (ev) => {
 document.addEventListener('keydown', (ev) => {
   if ($('modal-card').hidden) return
   if (ev.key === 'Escape') fecharModal()
-  else if (ev.key === 'Tab') prenderFoco(ev)
+  else if (ev.key === 'Tab') trapFocus(ev)
 })
 $('modal-corpo').addEventListener('click', (ev) => {
   const b = ev.target.closest('.cartao-opcao')
@@ -714,6 +715,7 @@ $('modal-resposta-registrar').addEventListener('click', async () => {
   toast('Registrado')
   await recarregarIndice()
   await abrirCard(cardAberto.id)
+  $('modal-resposta-texto').focus()
 })
 
 $('modal-resolver').addEventListener('click', async () => {
