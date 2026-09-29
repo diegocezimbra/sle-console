@@ -13,7 +13,7 @@ import { dirname, join, relative } from 'node:path'
 import { Estado } from './estado.js'
 import { createAuthMiddleware } from './auth.js'
 import { startPullLoop, commitAndPush } from './gitSync.js'
-import { publicarCenso, lerEstadoPublico } from './estadoPublico.js'
+import { criarPublicadorEstado, lerEstadoPublico } from './estadoPublico.js'
 import { normalizar } from './ingest.js'
 import { indexarCards } from './cards.js'
 import { diffDoArquivo, estadoDoGit, historico, prsAbertos } from './repo.js'
@@ -40,9 +40,10 @@ const WEB = join(dirname(fileURLToPath(import.meta.url)), '..', 'web')
 // Caminho fixo, relativo à raiz do repositório, dos dois lados (quem publica
 // local e quem lê em modo git precisam concordar sem se combinar em runtime).
 const CAMINHO_ESTADO_PUBLICO = 'estado-publico/sessoes.json'
-// Acima disto uma sessão publicada é fantasma: a máquina local já teria
-// atualizado o censo de novo se ainda estivesse viva (ver `deus sessao set`).
-const TTL_ESTADO_PUBLICO_MS = 20 * 60_000
+// CARD-120 (revisão): acima disto uma sessão publicada conta como parada.
+// Recalculada do lado de quem LÊ (não do que foi publicado) porque o `git
+// pull` na nuvem pode estar minutos atrás do último tick local.
+const TTL_ESTADO_PUBLICO_MS = 10 * 60_000
 
 /** Servidos por nome, nunca por caminho vindo da URL. */
 const ESTATICOS = {
@@ -61,10 +62,10 @@ export function criarDaemon({
   raiz = null,
   tetoDiarioUsd = Infinity,
   git = null, // { dataDir, keyPath, intervalMs? } quando CONSOLE_MODE=git; `projeto` já é o clone.
-  // { censoPath, publicoPath, dataDir, intervalMs? } no console LOCAL (CARD-120): publica
-  // o censo de sessões (estado/sessoes.json) redigido em `publicoPath` e empurra pro git a
-  // cada `intervalMs` -- é o que o console em modo git lê pra popular AGENTES e a régua,
-  // já que não tem rede direta até aqui pros hooks de sessão.
+  // { publicoPath, dataDir, intervalMs?, janelaAtivaMs?, limiteEventos?, throttleMs? } no console LOCAL
+  // (CARD-120): publica o `Estado` vivo (o mesmo que alimenta a aba Agentes daqui) redigido
+  // em `publicoPath` e empurra pro git a cada `intervalMs` -- é o que o console em modo git
+  // lê pra popular AGENTES e a régua, já que não tem rede direta até aqui pros hooks de sessão.
   publicarLocal = null,
 }) {
   const estado = new Estado(dados)
@@ -97,20 +98,36 @@ export function criarDaemon({
       })
     : null
 
-  /** Fecha o ciclo local do CARD-120: redige o censo, escreve o arquivo
-   *  público e empurra pro remoto -- mesmo mecanismo de `commitAndPush` que já
-   *  versiona `respostas/`. Erro aqui vira evento, nunca derruba o daemon: uma
-   *  sessão sem card publicado ainda deixa a máquina inteira observável. */
+  // Uma instância só por daemon: o throttle de `criarPublicadorEstado` vive
+  // no fechamento (`ultimoCommitEm`) e precisa sobreviver entre ticks do
+  // `setInterval` -- criar de novo a cada chamada perderia a memória do
+  // throttle e voltaria a commitar sem limite (revisão do PR #6).
+  const publicarEstado = publicarLocal
+    ? criarPublicadorEstado({
+        estado,
+        publicoPath: publicarLocal.publicoPath,
+        janelaAtivaMs: publicarLocal.janelaAtivaMs,
+        limiteEventos: publicarLocal.limiteEventos,
+        throttleMs: publicarLocal.throttleMs,
+      })
+    : null
+
+  /** Fecha o ciclo local do CARD-120: redige o `Estado` vivo (sessões E fluxo
+   *  recente, pra régua), escreve o arquivo público e empurra pro remoto --
+   *  mesmo mecanismo de `commitAndPush` que já versiona `respostas/`. Erro
+   *  aqui vira evento, nunca derruba o daemon: uma sessão sem publicar ainda
+   *  deixa a máquina inteira observável por outra via. */
   function publicarSessoesLocais() {
     let mudou
     try {
-      ;({ mudou } = publicarCenso({ censoPath: publicarLocal.censoPath, publicoPath: publicarLocal.publicoPath }))
+      ;({ mudou } = publicarEstado())
     } catch (erro) {
       registrar({ kind: 'estado-publico.falhou', loop: 'L3', card: null, session: null, payload: { erro: String(erro) } })
       return
     }
-    // Sem mudança real nas sessões, não há o que commitar -- só o carimbo de
-    // tempo mudou, e isso sozinho commitaria a cada 30s pra sempre.
+    // `mudou:false` cobre dois casos: nada de real mudou (campo volátil
+    // sozinho não conta), ou mudou mas o throttle de 2min ainda está
+    // segurando -- os dois sem o que commitar agora.
     if (!mudou) return
     const resultado = commitAndPush({
       dataDir: publicarLocal.dataDir,
@@ -130,26 +147,37 @@ export function criarDaemon({
    *  (via `publicarSessoesLocais`, chegado por `git pull`) e devolve no
    *  mesmo formato de `estado.snapshot().sessoes`, pra AGENTES e a régua não
    *  precisarem saber a diferença entre uma sessão vista por hook e uma vista
-   *  por git. Fora do modo git, não há o que ler -- lista vazia, sem custo. */
+   *  por git. `ativa` é recalculada aqui pelo `ultimo` de verdade -- nunca
+   *  pelo `ativa` já publicado, que pode ter horas de `git pull` de atraso.
+   *  Fora do modo git, não há o que ler -- lista vazia, sem custo. */
   function sessoesPublicadas() {
     if (!git) return []
     const agora = Date.now()
     const { sessoes } = lerEstadoPublico(join(git.dataDir, CAMINHO_ESTADO_PUBLICO))
     return sessoes.map((s) => {
-      const inativoMs = s.atualizado ? agora - Date.parse(s.atualizado) : null
+      const inativoMs = s.ultimo ? agora - Date.parse(s.ultimo) : null
       return {
         id: s.sessao,
-        agente: null,
+        agente: s.agente ?? null,
         projeto: s.projeto ?? null,
         card: s.card ?? null,
-        modelo: s.modelo ?? null,
-        eventos: null,
+        ultimoPasso: s.ultimoPasso ?? null,
+        eventos: s.eventos ?? null,
         inicio: null,
-        ultimo: s.atualizado ?? null,
+        ultimo: s.ultimo ?? null,
         inativoMs,
-        ativa: inativoMs != null ? inativoMs < TTL_ESTADO_PUBLICO_MS : true,
+        ativa: inativoMs != null ? inativoMs < TTL_ESTADO_PUBLICO_MS : false,
       }
     })
+  }
+
+  /** A régua também precisa de traço em modo git -- sem fluxo publicado ela
+   *  fica sempre em branco, porque este `Estado` nunca recebe hook nenhum.
+   *  Mesclado (não substituído) porque `git.tree`/respostas ainda podem
+   *  gerar eventos de sistema locais aqui. */
+  function fluxoPublicado() {
+    if (!git) return []
+    return lerEstadoPublico(join(git.dataDir, CAMINHO_ESTADO_PUBLICO)).eventos
   }
 
   /** Commita e empurra tudo que mudou em `cards/` no clone -- no-op fora do
@@ -339,6 +367,9 @@ export function criarDaemon({
         json(res, {
           ...estado.snapshot(),
           sessoes: [...estado.snapshot().sessoes, ...sessoesPublicadas()],
+          // Mesclado e reordenado por ts: a régua assume a lista em ordem
+          // cronológica (primeiro/último evento marcam as pontas do eixo).
+          fluxo: [...estado.snapshot().fluxo, ...fluxoPublicado()].sort((a, b) => a.ts.localeCompare(b.ts)),
           cards: i.cards,
           board: i.board,
           divergencias: i.divergencias,

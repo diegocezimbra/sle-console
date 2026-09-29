@@ -96,8 +96,8 @@ export class Estado {
     if (!e.session) return
 
     const s = this.sessoes.get(e.session) ?? {
-      id: e.session, agente: e.agent, projeto: null, ativa: true, eventos: 0,
-      inicio: e.ts, ultimo: e.ts,
+      id: e.session, agente: e.agent, projeto: null, card: null, ultimoPasso: null,
+      ativa: true, eventos: 0, inicio: e.ts, ultimo: e.ts,
     }
     // UUID nao diz nada; o nome do projeto diz tudo.
     const cwd = e.payload?.cwd
@@ -105,6 +105,12 @@ export class Estado {
     s.eventos++
     s.ultimo = e.ts
     if (e.agent) s.agente = e.agent
+    // Sticky: uma sessao fica no mesmo card entre eventos que nao o carregam
+    // (ex.: um tool.post fora do card, no meio de uma tarefa dentro dele).
+    if (e.card) s.card = e.card
+    // So o tipo do evento -- nunca o comando/arquivo, que pode ter segredo e
+    // e o que CARD-120 publica pra fora da maquina.
+    s.ultimoPasso = e.kind
     if (e.kind === 'session.end') s.ativa = false
     if (e.kind === 'session.start') s.ativa = true
     this.sessoes.set(e.session, s)

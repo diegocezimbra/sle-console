@@ -181,14 +181,14 @@ function pintarSessoes(sessoes) {
 }
 
 /**
- * Uma sessão vista por hook tem `eventos`; uma vista via `estado-publico/sessoes.json`
- * (CARD-120 -- console em modo git, sem hook alcançável) tem `card`/`modelo` em vez
- * disso. As duas cabem na mesma linha sem a tela precisar saber a diferença.
+ * Sessão vista por hook local ou por `estado-publico/sessoes.json` (CARD-120
+ * -- console em modo git, sem hook alcançável): mesmo shape nos dois casos
+ * (`card`, `ultimoPasso`, `eventos`), a tela não precisa saber a diferença.
  */
 function metaDeSessao(s) {
   const partes = []
   if (s.card) partes.push(s.card)
-  if (s.modelo) partes.push(s.modelo)
+  if (s.ultimoPasso) partes.push(s.ultimoPasso)
   if (s.eventos != null) partes.push(`${s.eventos} eventos`)
   partes.push(s.ativa ? (s.inativoMs != null ? `há ${idade(s.inativoMs)}` : 'ativa') : 'inativa')
   return partes.join(' · ')
