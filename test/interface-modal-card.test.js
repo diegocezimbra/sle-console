@@ -118,7 +118,11 @@ test('CARD-085: card pendente mostra "Minha resposta"', { skip }, async () => {
 })
 
 test('CARD-085: em 400 px o modal ocupa a tela inteira', { skip }, async () => {
+  // CARD-094: abaixo de 768 px a pagina normal vira o shell do celular; o modal do desktop segue
+  // valendo na versao completa (?desktop=1), que e o que este teste cobre.
   await browser.viewport(400, 700)
+  await browser.ir(`${base}/board?desktop=1`)
+  await browser.esperar(`document.body.dataset.pronto === 'sim' && !!document.querySelector('[data-card="CARD-202"]')`)
   await openCard('CARD-202')
   await browser.esperar(isOpen)
   const r = await browser.avaliar(`(() => { const b = document.querySelector('#modal-card .modal-caixa').getBoundingClientRect(); const o = document.getElementById('modal-card').getBoundingClientRect(); return [Math.round(b.width) === Math.round(o.width), Math.round(b.height), b.width >= o.width - 1 && document.querySelector(".modal-caixa").scrollWidth <= b.width] })()`)

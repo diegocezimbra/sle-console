@@ -150,3 +150,14 @@ test('credenciais: so nome e status; sem status vira ausente; card sem secao dev
   ])
   assert.deepEqual(extrairCredenciais('## Notas\n\n- x\n'), [])
 })
+
+// CARD-094: o parser tirava aspas de UMA ponta so. Titulo que termina em 'outra' (a ultima opcao
+// entre aspas, como o DEUS escreve) perdia a aspa final e a opcao sumia da tela do celular.
+test('aspas do valor so saem quando ha o PAR nas duas pontas', () => {
+  const c = lerCard("---\nid: X\ntitle: Responda 'sim' ou 'outra'\nnome: \"entre aspas\"\nsimples: 'so o par'\nsolta: 'sem fechar\nfim: termina com aspa'\n---\ncorpo\n")
+  assert.equal(c.title, "Responda 'sim' ou 'outra'")
+  assert.equal(c.nome, 'entre aspas')
+  assert.equal(c.simples, 'so o par')
+  assert.equal(c.solta, "'sem fechar")
+  assert.equal(c.fim, "termina com aspa'")
+})

@@ -84,7 +84,9 @@ function valor(cru) {
   }
   if (/^-?\d+(\.\d+)?$/.test(t)) return Number(t)
   if (t === 'true' || t === 'false') return t === 'true'
-  return t.replace(/^["']|["']$/g, '')
+  // So tira aspas quando ha o PAR nas duas pontas ("x" ou 'x'): uma aspa solta e conteudo. Titulo
+  // que termina em 'outra' (ultima opcao entre aspas) perdia a aspa final e a opcao sumia da tela.
+  return t.replace(/^(["'])([\s\S]*)\1$/, '$2')
 }
 
 /**

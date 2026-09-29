@@ -28,6 +28,8 @@ import { montarHistorico } from './historico.js'
 import { extrairMedidas } from './otel.js'
 import { COLUNAS, lerCard } from './cards.js'
 import { createChatRoutes } from './chat-routes.js'
+import { createMobileRoutes } from './mobile-routes.js'
+import { createStaticFiles } from './static-files.js'
 import { descobrirProjetos, invalidarCache, resolverProjeto } from './projetos.js'
 import {
   agentesDeTodos,
@@ -47,18 +49,6 @@ const CAMINHO_ESTADO_PUBLICO = 'estado-publico/sessoes.json'
 // pull` na nuvem pode estar minutos atrás do último tick local.
 const TTL_ESTADO_PUBLICO_MS = 10 * 60_000
 
-/** Servidos por nome, nunca por caminho vindo da URL. */
-const ESTATICOS = {
-  '/': ['index.html', 'text/html; charset=utf-8'],
-  '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
-  '/credenciais.js': ['credenciais.js', 'text/javascript; charset=utf-8'],
-  '/style.css': ['style.css', 'text/css; charset=utf-8'],
-  '/chat': ['chat.html', 'text/html; charset=utf-8'],
-  '/chat.js': ['chat.js', 'text/javascript; charset=utf-8'],
-  '/chat-md.js': ['chat-md.js', 'text/javascript; charset=utf-8'],
-  '/chat-order.js': ['chat-order.js', 'text/javascript; charset=utf-8'],
-  '/chat.css': ['chat.css', 'text/css; charset=utf-8'],
-}
 
 /**
  * `raiz` e a arvore que contem varios projetos; `projeto` e o padrao.
@@ -87,6 +77,8 @@ export function criarDaemon({
   const runner = new Runner(projeto, { tetoDiarioUsd })
   const ouvintes = new Set()
   const autorizar = createAuthMiddleware()
+  const arquivosEstaticos = createStaticFiles({ webDir: WEB })
+  const rotasMobile = createMobileRoutes()
   const pullLoop = git
     ? startPullLoop({
         dataDir: git.dataDir,
@@ -299,19 +291,10 @@ export function criarDaemon({
     }
     const git = async () => (todos ? gitDeTodosAsync(raiz) : estadoDoGit(alvo))
 
-    // Rotas amigáveis do card e das abas: servem o mesmo index.html, o app.js
-    // decide pelo pathname o que mostrar — sem isso Ctrl+clique/abrir em guia
-    // nova, ou um F5 na aba certa, caem num 404 em vez de reabrir no lugar certo.
-    const ABAS = ['fluxo', 'board', 'editar', 'controle', 'metricas', 'historico']
-    if (req.method === 'GET' && (/^\/card\/[^/]+$/.test(rota) || ABAS.includes(rota.slice(1)))) {
-      try {
-        const corpo = readFileSync(join(WEB, 'index.html'))
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
-        return res.end(corpo)
-      } catch {
-        return fim(res, 404)
-      }
-    }
+    // Páginas e assets de `web/` (inclui as rotas amigáveis do card e das abas, que servem o
+    // mesmo index.html — sem isso Ctrl+clique/nova guia/F5 caem num 404) e a API enxuta do celular.
+    if (arquivosEstaticos.handle(req, res, rota)) return
+    if (rotasMobile(req, res, rota, indice)) return
 
     // CARD-202: cofre de credenciais de teste. A API só devolve NOME + STATUS; o valor entra por PUT, é criptografado
     // com a chave pública do DEUS e nunca mais sai daqui (o DEUS puxa o `.age` por SSH e apaga).
@@ -485,17 +468,6 @@ export function criarDaemon({
     if (rota === '/api/prs') return exigeProjeto() ? undefined : json(res, prsAbertos(alvo))
     if (rota === '/api/stream') return abrirStream(res)
 
-    const estatico = ESTATICOS[rota]
-    if (estatico && req.method === 'GET') {
-      const [arquivo, tipo] = estatico
-      try {
-        const corpo = readFileSync(join(WEB, arquivo))
-        res.writeHead(200, { 'content-type': tipo })
-        return res.end(corpo)
-      } catch {
-        return fim(res, 404)
-      }
-    }
     return fim(res, 404)
   })
 

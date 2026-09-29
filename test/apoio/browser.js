@@ -108,6 +108,13 @@ export async function abrirBrowser() {
     async viewport(width, height = 800) {
       await chamar('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
     },
+    /** Celular de verdade (CARD-094): meta viewport vale, toque ligado, pixel ratio 2. Chamar ANTES de `ir`. */
+    async celular(width = 390, height = 844) {
+      await chamar('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 2, mobile: true })
+      await chamar('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 })
+    },
+    /** Comando CDP cru (ex.: `Input.synthesizeScrollGesture` para deslizar com o dedo). */
+    chamar,
     async esperar(expressao, { limite = 10000 } = {}) {
       const ate = Date.now() + limite
       let ultimo
