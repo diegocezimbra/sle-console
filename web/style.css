@@ -55,6 +55,14 @@ font-size:14px;font-weight:600;line-height:1.35;color:var(--texto)}
 .card .selo-decisao{display:inline-block;margin-bottom:6px;padding:1px 8px;border-radius:999px;
 font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
 color:var(--fundo);background:var(--l2)}
+/* Etiqueta de prioridade (CARD-120) -- mesmo peso visual do selo de decisão,
+   cor neutra: prioridade não é alarme, é ordem. */
+.card .selo-prioridade{display:inline-block;margin:0 6px 6px 0;padding:1px 6px;border-radius:4px;
+font-size:10px;font-weight:600;letter-spacing:.03em;
+color:var(--fraco);background:var(--painel);border:1px solid var(--borda)}
+.filtro-prioridade-label{display:flex;align-items:center;gap:6px;margin:0 0 12px;font-size:12px;color:var(--fraco)}
+.filtro-prioridade-label select{background:var(--painel);color:var(--texto);border:1px solid var(--borda);
+border-radius:4px;padding:2px 6px}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;
 justify-content:center;z-index:50}
 .modal-overlay[hidden]{display:none}

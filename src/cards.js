@@ -9,6 +9,8 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
+import { normalizarPrioridade, ordenarPorPrioridade } from './prioridade.js'
+
 /** Ordem do pipeline, nao ordem alfabetica: e assim que o board se le. */
 export const COLUNAS = ['backlog', 'pendente-diego', 'refinamento', 'aprovado', 'doing', 'review', 'done', 'recurring']
 
@@ -95,7 +97,15 @@ export function indexarCards(raiz) {
       }
       if (!card) continue
 
-      const completo = { ...card, coluna, arquivo, modificado: mtime(arquivo) }
+      // Normalizado aqui, uma vez, pra tela e filtro lerem o mesmo P sem
+      // reimplementar o mapa de texto legado (urgente/alta/média) em JS do navegador.
+      const completo = {
+        ...card,
+        prioridade: normalizarPrioridade(card.prioridade),
+        coluna,
+        arquivo,
+        modificado: mtime(arquivo),
+      }
       cards.push(completo)
       if (card.status && card.status !== coluna) {
         divergencias.push({ id: card.id, arquivo, coluna, status: card.status })
@@ -103,7 +113,9 @@ export function indexarCards(raiz) {
     }
   }
 
-  const board = Object.fromEntries(COLUNAS.map((c) => [c, cards.filter((x) => x.coluna === c)]))
+  // P-1 antes de P0 antes de P1... -- é assim que o board se lê, não pela
+  // ordem em que o disco devolveu os arquivos da pasta.
+  const board = Object.fromEntries(COLUNAS.map((c) => [c, ordenarPorPrioridade(cards.filter((x) => x.coluna === c))]))
   return { cards, board, divergencias }
 }
 

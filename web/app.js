@@ -5,6 +5,10 @@ const COLUNAS = ['backlog', 'pendente-diego', 'refinamento', 'aprovado', 'doing'
 const ROTULOS = { 'pendente-diego': 'Pendentes do Diego' }
 const eventos = []
 let indice = { board: {}, cards: [] }
+// Filtro de prioridade do board (CARD-120). 'todas' nunca esconde nada --
+// selecionar um P específico é uma escolha explícita de quem está olhando.
+const PRIORIDADES = ['P-1', 'P0', 'P1', 'P2', 'P3']
+let filtroPrioridade = 'todas'
 // Projeto observado. Vai em toda chamada de leitura, para a tela nunca mostrar
 // o board de um projeto com o git de outro.
 let projetoAtual = null
@@ -235,10 +239,25 @@ function pintarForaDoBoard(sessoes) {
   )
 }
 
+function montarFiltroPrioridade() {
+  const sel = $('filtro-prioridade')
+  if (!sel || sel.dataset.montado) return
+  sel.dataset.montado = '1'
+  sel.append(new Option('todas as prioridades', 'todas'))
+  for (const p of PRIORIDADES) sel.append(new Option(p, p))
+  sel.value = filtroPrioridade
+  sel.addEventListener('change', () => {
+    filtroPrioridade = sel.value
+    pintarBoard()
+  })
+}
+
 function pintarBoard() {
+  montarFiltroPrioridade()
+  const passaNoFiltro = (c) => filtroPrioridade === 'todas' || (c.prioridade ?? 'P3') === filtroPrioridade
   $('colunas').replaceChildren(
     ...COLUNAS.map((coluna) => {
-      const cards = indice.board?.[coluna] ?? []
+      const cards = (indice.board?.[coluna] ?? []).filter(passaNoFiltro)
       const div = document.createElement('div')
       div.className = 'coluna'
       div.dataset.coluna = coluna
@@ -264,6 +283,7 @@ function botaoDeCard(c) {
   const filhos = []
   if (c.coluna === 'pendente-diego') filhos.push(campo('selo-decisao', 'AGUARDA VOCÊ'))
   filhos.push(
+    campo('selo-prioridade', c.prioridade ?? 'P3'),
     campo('cid', c.rotuloProjeto ? `${c.rotuloProjeto} · ${c.id}` : c.id),
     campo('titulo', c.title ?? '')
   )
