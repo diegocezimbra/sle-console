@@ -19,6 +19,14 @@ import { dirname } from 'node:path'
 
 const JANELA_ATIVA_MS_PADRAO = 10 * 60_000
 const LIMITE_EVENTOS_PADRAO = 60
+// CARD-120c: até aqui o publicador subia o Estado inteiro -- toda sessão que
+// o daemon já viu, incluindo subagente morto de ontem e sessão de véspera --
+// e por isso o console em modo git chegou a mostrar "160 agentes
+// trabalhando" com só 4 `ativa:true` no meio. Esta janela é do lado de quem
+// PUBLICA (o que nem entra no arquivo), separada da `janelaAtivaMs` acima
+// (o que, já publicado, ainda conta como "ativa"). `SLE_PUBLICAR_JANELA_H`
+// em `bin/sle.js` sobrescreve.
+export const JANELA_PUBLICACAO_MS_PADRAO = 6 * 3600_000
 
 /**
  * Sessão viva (`Estado#snapshot().sessoes`) -> retrato publicável. Nada de
@@ -41,6 +49,27 @@ export function redigirSessoes(sessoesEstado, { agora = Date.now(), janelaAtivaM
       ativa: inativoMs != null ? inativoMs < janelaAtivaMs : false,
     }
   })
+}
+
+const AGENTES_SUBAGENTE = new Set(['general-purpose', 'Explore'])
+
+/**
+ * O que de fato sai no arquivo: descarta quem não deu sinal dentro da
+ * janela de publicação (padrão 6h -- histórico de censo, não retrato de
+ * agora) e, à parte disso, um subagente (`general-purpose`/`Explore`) só
+ * entra enquanto está ativo -- ele nasce e morre dentro de uma tarefa da
+ * sessão mãe, e um subagente morto na lista não ajuda ninguém a saber quem
+ * trabalha agora. Ativas primeiro: quem lê rola menos pra achar o que importa.
+ */
+export function selecionarParaPublicar(sessoesRedigidas, { agora = Date.now(), janelaPublicacaoMs = JANELA_PUBLICACAO_MS_PADRAO } = {}) {
+  return (sessoesRedigidas ?? [])
+    .filter((s) => {
+      const inativoMs = s.ultimo ? agora - Date.parse(s.ultimo) : Infinity
+      if (!(inativoMs < janelaPublicacaoMs)) return false
+      if (AGENTES_SUBAGENTE.has(s.agente) && !s.ativa) return false
+      return true
+    })
+    .sort((a, b) => Number(b.ativa) - Number(a.ativa))
 }
 
 /**
@@ -120,11 +149,19 @@ function chaveEstavelFluxo(eventos) {
  * Os campos voláteis vão pro arquivo em toda escrita que de fato acontece:
  * só a DECISÃO de escrever ignora eles, o conteúdo escrito é sempre completo.
  */
-export function criarPublicadorEstado({ estado, publicoPath, janelaAtivaMs, limiteEventos, throttleMs = THROTTLE_PADRAO_MS }) {
+export function criarPublicadorEstado({
+  estado,
+  publicoPath,
+  janelaAtivaMs,
+  janelaPublicacaoMs = JANELA_PUBLICACAO_MS_PADRAO,
+  limiteEventos,
+  throttleMs = THROTTLE_PADRAO_MS,
+}) {
   let ultimoCommitEm = 0
   return function publicar({ agora = Date.now() } = {}) {
     const snap = estado.snapshot()
-    const sessoes = redigirSessoes(snap.sessoes, { agora, janelaAtivaMs })
+    const redigidas = redigirSessoes(snap.sessoes, { agora, janelaAtivaMs })
+    const sessoes = selecionarParaPublicar(redigidas, { agora, janelaPublicacaoMs })
     const eventos = redigirFluxo(snap.fluxo, { limite: limiteEventos })
     const atual = lerEstadoPublico(publicoPath)
     const mudouDeVerdade =

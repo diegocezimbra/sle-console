@@ -125,3 +125,32 @@ test('CARD-120: a sessao guarda o card (sticky) e o tipo do ultimo evento', () =
   assert.equal(s.card, 'CARD-120')
   assert.equal(s.ultimoPasso, 'tool.post')
 })
+
+// CARD-120c: sem poda, `this.sessoes` so cresce -- todo boot remonta o
+// JSONL inteiro e nunca esquece uma sessao, que e como 160 sessoes
+// historicas chegaram a `estado-publico/sessoes.json`.
+test('podar tira do indice sessao sem evento ha mais de 24h, sem mexer na ativa', () => {
+  const e = new Estado(dir())
+  const agora = Date.now()
+  e.registrar(ev({ session: 'de-ontem', ts: new Date(agora - 30 * 3600_000).toISOString() }))
+  e.registrar(ev({ session: 'de-agora', ts: new Date(agora).toISOString() }))
+  e.podar({ agora, maxIdadeMs: 24 * 3600_000 })
+  assert.deepEqual(e.snapshot().sessoes.map((s) => s.id), ['de-agora'])
+})
+
+test('poda roda sozinha no boot, com o padrao de 24h', () => {
+  const d = dir()
+  const antigo = new Estado(d, { maxIdadeSessaoMs: 24 * 3600_000 })
+  antigo.registrar(ev({ session: 'fantasma-de-30h', ts: new Date(Date.now() - 30 * 3600_000).toISOString() }))
+  // Remontar do MESMO disco (outro processo, outro boot): a sessao de 30h
+  // atras nao pode reaparecer so porque o JSONL a contem.
+  const novo = new Estado(d, { maxIdadeSessaoMs: 24 * 3600_000 })
+  assert.deepEqual(novo.snapshot().sessoes, [])
+})
+
+test('podar nao mexe em sessao dentro do prazo', () => {
+  const e = new Estado(dir())
+  e.registrar(ev({ session: 'recente', ts: new Date(Date.now() - 60_000).toISOString() }))
+  e.podar({ maxIdadeMs: 24 * 3600_000 })
+  assert.equal(e.snapshot().sessoes.length, 1)
+})

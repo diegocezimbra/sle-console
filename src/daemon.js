@@ -107,6 +107,7 @@ export function criarDaemon({
         estado,
         publicoPath: publicarLocal.publicoPath,
         janelaAtivaMs: publicarLocal.janelaAtivaMs,
+        janelaPublicacaoMs: publicarLocal.janelaPublicacaoMs,
         limiteEventos: publicarLocal.limiteEventos,
         throttleMs: publicarLocal.throttleMs,
       })
@@ -142,6 +143,13 @@ export function criarDaemon({
     ? setInterval(publicarSessoesLocais, publicarLocal.intervalMs ?? 30_000)
     : null
   publicarLoop?.unref?.()
+
+  // Poda periódica do índice em memória (CARD-120c) -- de hora em hora, não
+  // a cada evento: é limpeza de fundo, não precisa reagir na hora, e rodar
+  // menos vezes custa menos CPU num daemon que já reconstrói do zero a cada
+  // boot.
+  const podaLoop = setInterval(() => estado.podar(), 60 * 60_000)
+  podaLoop.unref?.()
 
   /** Lado do console em modo git: lê o arquivo que a máquina local publicou
    *  (via `publicarSessoesLocais`, chegado por `git pull`) e devolve no
@@ -765,6 +773,7 @@ export function criarDaemon({
     otlp,
     pararGit: () => pullLoop?.stop(),
     pararPublicarLocal: () => (publicarLoop ? clearInterval(publicarLoop) : null),
+    pararPoda: () => clearInterval(podaLoop),
   }
 }
 

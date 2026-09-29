@@ -132,7 +132,9 @@ color:#0b1220;padding:8px 18px;border-radius:999px;font:600 13px/1 -apple-system
 z-index:60;box-shadow:0 8px 24px rgba(0,0,0,.4)}
 .toast[hidden]{display:none}
 ul,ol{margin:0;padding:0;list-style:none}
-#sessoes li{padding:6px 0;border-bottom:1px solid var(--borda)}
+#sessoes li,#sessoes-recentes li{padding:6px 0;border-bottom:1px solid var(--borda)}
+#sessoes-recentes-painel{margin-top:10px}
+#sessoes-recentes-painel summary{cursor:pointer;color:var(--fraco);font-size:12px}
 #sessoes .id{color:var(--texto);display:block}
 #sessoes .meta{color:var(--fraco);font-size:11px;display:block}
 #sessoes .morta .id{color:var(--fraco);text-decoration:line-through}

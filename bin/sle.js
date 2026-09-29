@@ -73,6 +73,10 @@ const publicarLocal = publicarCensoDir
       publicoPath: join(publicarCensoDir, 'estado-publico', 'sessoes.json'),
       dataDir: publicarCensoDir,
       intervalMs: Number(process.env.SLE_PUBLICAR_CENSO_MS ?? 30_000),
+      // CARD-120c: quantas horas de histórico entram no censo publicado --
+      // acima disto a sessão nem chega no arquivo (o console em modo git não
+      // tem outra fonte, então o filtro tem que acontecer aqui).
+      janelaPublicacaoMs: Number(process.env.SLE_PUBLICAR_JANELA_H ?? 6) * 3600_000,
     }
   : null
 
