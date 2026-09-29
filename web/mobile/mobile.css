@@ -123,3 +123,64 @@ html[data-modo="mobile"] #m-app { display: flex; flex-direction: column; height:
 .m-skel-card { height: 190px; border-radius: 14px; background: linear-gradient(90deg, var(--m-surface) 25%, var(--m-surface-2) 50%, var(--m-surface) 75%); background-size: 200% 100%; animation: m-shimmer 1.4s linear infinite; }
 @keyframes m-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .m-skel-card { animation: none; } }
+
+/* Acoes do topo (botao de filtros) */
+.m-top-actions { flex: none; display: flex; align-items: center; gap: 8px; }
+.m-top-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; border: 1px solid var(--m-border); border-radius: 999px; background: var(--m-surface); color: var(--m-text); font: 600 15px/1 var(--m-font); cursor: pointer; }
+.m-top-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.m-top-btn .m-badge { position: static; }
+
+/* Linha compacta de card: Quadro e Busca */
+.m-row { --tone: var(--pri-p3, #4b5563); position: relative; display: flex; flex-direction: column; gap: 6px; min-height: 64px; padding: 10px 12px 10px 17px; background: var(--m-surface); border: 1px solid var(--m-border); border-radius: 12px; color: var(--m-text); text-decoration: none; overflow: hidden; }
+.m-row::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--tone); }
+.m-row[data-tone="P-1"] { --tone: var(--pri-p-1, #7f1d1d); }
+.m-row[data-tone="P0"] { --tone: var(--pri-p0, #b91c1c); }
+.m-row[data-tone="P1"] { --tone: var(--pri-p1, #c2410c); }
+.m-row[data-tone="P2"] { --tone: var(--pri-p2, #a16207); }
+.m-row:active { background: var(--m-surface-2); }
+.m-row-meta { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.m-row-id { flex: none; color: var(--m-muted); font: 600 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.m-row-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font-size: 15px; line-height: 1.35; font-weight: 600; }
+.m-row-snippet { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; color: var(--m-muted); font-size: 13px; line-height: 1.4; }
+.m-col-chip { flex: none; background: var(--m-surface-2); border: 1px solid var(--m-border); color: var(--m-muted); }
+.m-col-list, .m-search-list { display: flex; flex-direction: column; gap: 8px; }
+
+/* Quadro: abas das colunas fixas no topo + uma coluna por vez (scroll-snap) */
+.m-screen[data-layout="fill"] { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.m-col-tabs { flex: none; display: flex; gap: 2px; padding: 4px 8px 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; background: var(--m-bg); border-bottom: 1px solid var(--m-border); }
+.m-col-tabs::-webkit-scrollbar { display: none; }
+.m-col-tab { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 12px; border: 0; border-bottom: 3px solid transparent; background: none; color: var(--m-muted); font: 600 15px/1 var(--m-font); cursor: pointer; }
+.m-col-tab[aria-selected="true"] { color: var(--m-text); border-bottom-color: var(--m-accent); }
+.m-col-count { min-width: 24px; padding: 3px 7px; border: 1px solid var(--m-border); border-radius: 999px; background: var(--m-surface-2); color: var(--m-text); font-size: 12px; font-weight: 700; line-height: 1.2; text-align: center; }
+.m-pager { flex: 1 1 auto; min-height: 0; display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; }
+.m-pager::-webkit-scrollbar { display: none; }
+/* So o eixo Y: `contain` nos dois eixos impedia o arrasto horizontal de subir para o .m-pager (o dedo nao trocava de coluna). */
+.m-col { flex: 0 0 100%; min-width: 0; overflow-y: auto; overscroll-behavior-y: contain; scroll-snap-align: start; scroll-snap-stop: always; padding: 12px; outline: none; }
+.m-col-empty { margin: 32px 0; text-align: center; color: var(--m-muted); }
+.m-more-rows { display: block; width: 100%; min-height: 48px; margin-top: 10px; border: 1.5px solid var(--m-border); border-radius: 12px; background: transparent; color: var(--m-accent); font: 600 15px/1 var(--m-font); cursor: pointer; }
+
+/* Painel de filtros (desliza da direita) */
+.m-drawer-overlay { position: fixed; inset: 0; z-index: 30; background: rgba(0, 0, 0, 0); transition: background .2s; }
+.m-drawer-overlay.open { background: rgba(0, 0, 0, .5); }
+.m-drawer { position: absolute; top: 0; right: 0; bottom: 0; width: min(88vw, 360px); display: flex; flex-direction: column; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); background: var(--m-surface); border-left: 1px solid var(--m-border); transform: translateX(100%); transition: transform .22s ease; }
+.m-drawer-overlay.open .m-drawer { transform: none; }
+@media (prefers-reduced-motion: reduce) { .m-drawer, .m-drawer-overlay { transition: none; } }
+.m-drawer-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--m-border); }
+.m-drawer-title { flex: 1; margin: 0; font-size: 20px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--m-text); }
+.m-close { width: 44px; height: 44px; border: 0; border-radius: 12px; background: var(--m-surface-2); color: var(--m-text); font-size: 18px; cursor: pointer; }
+.m-drawer-body { flex: 1; overflow-y: auto; padding: 4px 16px 16px; }
+.m-drawer-h3 { margin: 18px 0 8px; font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--m-muted); }
+.m-filter-chips { display: flex; flex-direction: column; gap: 8px; }
+.m-fchip { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 12px; border: 1.5px solid var(--m-border); border-radius: 12px; background: transparent; color: var(--m-text); font: 600 15px/1.2 var(--m-font); text-align: left; cursor: pointer; }
+.m-fchip[aria-pressed="true"] { border-color: var(--m-accent); background: var(--m-surface-2); }
+.m-fchip[aria-pressed="true"]::after { content: "✓"; margin-left: auto; color: var(--m-accent); font-weight: 800; }
+.m-select { width: 100%; min-height: 48px; padding: 0 12px; border: 1px solid var(--m-border); border-radius: 12px; background: var(--m-bg); color: var(--m-text); font: 16px/1.2 var(--m-font); }
+.m-drawer-foot { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--m-border); }
+.m-clear { flex: none; min-height: 48px; padding: 0 16px; border: 1.5px solid var(--m-border); border-radius: 12px; background: transparent; color: var(--m-text); font: 600 15px/1 var(--m-font); cursor: pointer; }
+.m-clear:disabled { opacity: .5; }
+.m-apply { flex: 1; min-height: 48px; border: 0; border-radius: 12px; background: var(--m-accent); color: var(--m-accent-ink); font: 700 16px/1 var(--m-font); cursor: pointer; }
+
+/* Busca */
+.m-search { position: sticky; top: 0; z-index: 2; margin: -12px -12px 0; padding: 12px; background: var(--m-bg); }
+.m-search-input { width: 100%; min-height: 48px; padding: 0 14px; border: 1px solid var(--m-border); border-radius: 12px; background: var(--m-surface); color: var(--m-text); font: 16px/1.2 var(--m-font); -webkit-appearance: none; appearance: none; }
+.m-search-status { min-height: 20px; margin: 8px 2px 10px; color: var(--m-muted); font-size: 14px; }

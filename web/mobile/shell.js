@@ -1,7 +1,6 @@
 // Shell do celular (CARD-094): barra de abas no rodape + uma tela por vez. Roda no lugar do
 // app.js quando a tela e pequena (a escolha e feita pelo script do index.html).
 import { countUnreadChat } from './counters.js'
-import { h } from './dom.js'
 import { mountPending } from './pending.js'
 import { counts, refresh, startPolling, state, subscribe } from './store.js'
 import { mountTabs, TABS } from './tabbar.js'
@@ -18,19 +17,11 @@ export function toast(message) {
   toastTimer = setTimeout(() => { el.hidden = true }, 2600)
 }
 
-/** Tela ainda nao entregue: diz isso e deixa uma saida para a versao completa. */
-function mountSoon(root) {
-  root.replaceChildren(h('div', { class: 'm-empty' },
-    h('p', { class: 'm-empty-title' }, 'Chega na próxima entrega'),
-    h('p', { class: 'm-empty-sub' }, 'Por enquanto, a versão completa abre aqui:'),
-    h('a', { class: 'm-retry', href: `${location.pathname}?desktop=1` }, 'Abrir versão completa')))
-  return {}
-}
-
+/** Pendentes abre na hora; Quadro e Busca so baixam o codigo delas quando a aba e aberta. */
 const SCREENS = {
-  pending: { title: 'Pendentes', mount: mountPending },
-  board: { title: 'Quadro', mount: mountSoon },
-  search: { title: 'Busca', mount: mountSoon },
+  pending: { title: 'Pendentes', load: async () => mountPending },
+  board: { title: 'Quadro', load: () => import('./board.js').then((m) => m.mountBoard) },
+  search: { title: 'Busca', load: () => import('./search.js').then((m) => m.mountSearch) },
 }
 const PATH_OF = Object.fromEntries(TABS.map((tab) => [tab.id, tab.href]))
 
@@ -40,29 +31,38 @@ function screenFromPath(pathname) {
 }
 
 let current = null
+let showToken = 0
 let chatUnread = 0
 const tabs = mountTabs($('m-tabs'), { active: screenFromPath(location.pathname), onSelect: (tab) => navigate(PATH_OF[tab.id]) })
+
+const setActions = (node) => $('m-top-actions').replaceChildren(...(node ? [node] : []))
 
 function updateBadges() {
   tabs.setBadges({ ...counts(), chat: chatUnread })
   $('m-offline').hidden = !state.offline
 }
 
-function show(id) {
-  current?.instance?.destroy?.()
+async function show(id) {
+  const token = ++showToken
+  current?.destroy?.()
+  current = { id, destroy: null }
   const screen = SCREENS[id]
   $('m-title').textContent = screen.title
   document.title = `${screen.title} · SLE Console`
   tabs.setActive(id)
+  setActions(null)
   const root = $('m-screen')
+  delete root.dataset.layout
   root.scrollTop = 0
-  current = { id, instance: screen.mount(root, { toast }) }
+  const mount = await screen.load()
+  if (token !== showToken) return // outra aba abriu enquanto o codigo baixava
+  current = { id, destroy: mount(root, { toast, setActions })?.destroy }
 }
 
 function navigate(path) {
   const id = screenFromPath(path)
   if (location.pathname !== path) history.pushState({}, '', path)
-  show(id)
+  return show(id)
 }
 
 async function tickChat() {
