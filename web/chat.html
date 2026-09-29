@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Chat com o DEUS</title>
+<link rel="stylesheet" href="/chat.css" />
+</head>
+<body>
+<header>
+  <a class="voltar" href="/" aria-label="voltar ao console">&larr;</a>
+  <h1>DEUS</h1>
+  <input id="busca" type="search" placeholder="buscar no histórico" aria-label="buscar no histórico" />
+</header>
+<main id="thread" aria-live="polite" tabindex="-1">
+  <p id="carregando" class="aviso">carregando…</p>
+</main>
+<form id="envio">
+  <textarea id="texto" rows="1" placeholder="Mensagem (Enter envia, Shift+Enter quebra linha)" aria-label="mensagem" maxlength="20000"></textarea>
+  <button type="submit">Enviar</button>
+</form>
+<p id="erro" class="erro" role="alert" hidden></p>
+<script type="module" src="/chat.js"></script>
+</body>
+</html>

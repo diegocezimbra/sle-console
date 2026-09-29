@@ -274,6 +274,7 @@ color:var(--l2);font-size:11px;line-height:1.6}
   .modal-resposta{padding-left:16px;padding-right:16px}
   .modal-acoes{flex-wrap:wrap;justify-content:flex-end}
 }
+nav .link-chat{color:var(--fraco);text-decoration:none;padding:3px 10px;border-radius:4px}nav .link-chat:hover{color:var(--texto)}
 
 /* CARD-202: credenciais de teste no card */
 .modal-cred-form { margin: 12px 0; padding: 12px; border: 1px solid var(--borda, #333); border-radius: 8px; }
