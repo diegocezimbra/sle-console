@@ -41,5 +41,34 @@ export function decodeAttachments(list) {
   return { ok: true, files }
 }
 
-/** Tipo de conteudo para servir um anexo ja gravado, pela extensao (o nome so tem as tres do `KINDS`). */
-export const contentTypeOf = (name) => KINDS.find((k) => name.endsWith(`.${k.ext}`))?.type ?? 'application/octet-stream'
+/**
+ * O que o console SERVE de `chat/anexos/` (CARD-240): as imagens do Diego e o que o DEUS manda com `deus chat enviar --arquivo`.
+ * Imagem sai inline; o resto e download. Nada de html/svg: o que o navegador poderia executar nunca entra na lista.
+ */
+const SERVED = {
+  jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
+  pdf: 'application/pdf', md: 'text/markdown; charset=utf-8', csv: 'text/csv; charset=utf-8',
+  json: 'application/json; charset=utf-8', txt: 'text/plain; charset=utf-8',
+}
+export const SERVED_EXTENSIONS = Object.keys(SERVED)
+const extensionOf = (name) => String(name).slice(String(name).lastIndexOf('.') + 1).toLowerCase()
+
+/** Tipo de conteudo para servir um anexo ja gravado, pela extensao. */
+export const contentTypeOf = (name) => SERVED[extensionOf(name)] ?? 'application/octet-stream'
+
+/** So imagem abre dentro da pagina; qualquer outro tipo e baixado. */
+export const isInlineImage = (name) => contentTypeOf(name).startsWith('image/')
+
+/** Nome para o download: so o ultimo trecho, sem aspas, ponto e virgula, barra nem caractere de controle. */
+export function downloadName(wanted, fallback) {
+  const base = String(wanted ?? '').split(/[\\/]/).pop().replace(/[\u0000-\u001f\u007f";]/g, '').replace(/\.{2,}/g, '.').trim().slice(0, 120)
+  return base && base !== '.' ? base : fallback
+}
+
+/** `Content-Disposition` com o nome em ASCII (clientes antigos) e em UTF-8 (RFC 5987). */
+export function dispositionOf(name, wanted) {
+  const nome = downloadName(wanted, name)
+  const ascii = nome.replace(/[^\x20-\x7e]/g, '_').replace(/\\/g, '_')
+  const utf8 = encodeURIComponent(nome).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
+  return `${isInlineImage(name) ? 'inline' : 'attachment'}; filename="${ascii}"; filename*=UTF-8''${utf8}`
+}

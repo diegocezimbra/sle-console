@@ -71,3 +71,10 @@ h1{font-size:14px;margin:0;letter-spacing:.1em}
   .msg .anexo img{background:#0000001a}
   #envio .anexar-menu{box-shadow:0 8px 24px rgba(0,0,0,.18)}
 }
+
+/* CARD-240: arquivo que nao e imagem (pdf, md, csv, json, txt) vira chip de download com extensao, nome e tamanho */
+.msg .arquivo{display:flex;align-items:center;gap:10px;min-height:44px;max-width:100%;padding:6px 12px 6px 6px;border:1px solid var(--borda);border-radius:10px;background:var(--painel);color:var(--texto);text-decoration:none}
+.msg .arquivo:hover,.msg .arquivo:focus-visible{border-color:var(--link)}
+.msg .arquivo-ext{flex:none;min-width:40px;padding:6px 4px;border-radius:6px;background:var(--link);color:var(--link-ink);font-size:11px;font-weight:700;text-align:center;letter-spacing:.04em}
+.msg .arquivo-nome{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msg .arquivo-tam{flex:none;color:var(--fraco);font-size:12px}

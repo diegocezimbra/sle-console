@@ -144,14 +144,39 @@ const CITATION = /\n*\[anexo: chat\/anexos\/[^\]\n]+\]/g
 /** Sem as linhas `[anexo: ...]` (elas existem para quem le so o jsonl; a tela mostra a imagem). */
 export const textWithoutCitations = (message) => (message.anexos?.length ? String(message.texto).replace(CITATION, '').trim() : message.texto)
 
-/** Miniaturas clicaveis (abrem a imagem inteira em outra guia); `width`/`height` reservam o espaco antes de carregar. */
+const IMAGE_NAME = /\.(?:jpe?g|png|webp)$/i
+const isImage = (a, name) => /^image\//.test(a.tipo ?? '') || IMAGE_NAME.test(name)
+
+/** `900 B`, `12,5 KB`, `2,3 MB` (pt-BR). */
+export function formatBytes(n) {
+  if (!Number.isFinite(n) || n < 0) return ''
+  if (n < 1024) return `${n} B`
+  const um = (v) => v.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+  return n < 1024 * 1024 ? `${um(n / 1024)} KB` : `${um(n / (1024 * 1024))} MB`
+}
+
+/** Arquivo que nao e imagem (pdf, md, csv, json, txt): um chip de download com extensao, nome e tamanho (CARD-240). */
+function fileChip(a, name, url) {
+  const shown = a.nome || name
+  const link = el('a', { href: `${url}?nome=${encodeURIComponent(shown)}`, className: 'arquivo', download: shown })
+  link.append(
+    el('span', { className: 'arquivo-ext', textContent: name.slice(name.lastIndexOf('.') + 1).toUpperCase() }),
+    el('span', { className: 'arquivo-nome', textContent: shown }),
+    el('span', { className: 'arquivo-tam', textContent: formatBytes(a.bytes) }),
+  )
+  return link
+}
+
+/** Miniaturas clicaveis para imagem (abrem inteira em outra guia; `width`/`height` reservam o espaco) e chip de download para o resto. */
 export function attachmentsOf(message) {
   if (!message.anexos?.length) return null
   const box = el('div', { className: 'anexos' })
   message.anexos.forEach((a, i) => {
     const m = /^chat\/anexos\/(\d{4}-\d{2}-\d{2})\/([\w-]+\.\w+)$/.exec(a.arquivo)
     if (!m) return
-    const img = el('img', { src: `/api/chat/anexos/${m[1]}/${m[2]}`, alt: `Imagem ${i + 1} enviada`, loading: 'lazy' })
+    const url = `/api/chat/anexos/${m[1]}/${m[2]}`
+    if (!isImage(a, m[2])) return box.append(fileChip(a, m[2], url))
+    const img = el('img', { src: url, alt: `Imagem ${i + 1} enviada`, loading: 'lazy' })
     if (a.largura && a.altura) {
       img.width = a.largura
       img.height = a.altura

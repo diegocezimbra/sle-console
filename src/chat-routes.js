@@ -11,11 +11,11 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
 import { append, search, since, page } from './chat.js'
-import { ATTACHMENT_BODY_LIMIT, contentTypeOf, decodeAttachments } from './chat-attachments.js'
+import { ATTACHMENT_BODY_LIMIT, SERVED_EXTENSIONS, contentTypeOf, decodeAttachments, dispositionOf } from './chat-attachments.js'
 import { commitAndPush } from './gitSync.js'
 
 const BODY_LIMIT = 64 * 1024
-const ATTACHMENT_FILE = /^\/api\/chat\/anexos\/(\d{4}-\d{2}-\d{2})\/([\w-]+\.(?:jpg|png|webp))$/
+const ATTACHMENT_FILE = new RegExp(`^/api/chat/anexos/(\\d{4}-\\d{2}-\\d{2})/([\\w-]+\\.(?:${SERVED_EXTENSIONS.join('|')}))$`)
 const ONE_YEAR_S = 31_536_000
 
 const json = (res, dados, codigo = 200) => {
@@ -92,8 +92,11 @@ export function createChatRoutes({ root, git = null, registrar = () => {}, avisa
     return true
   }
 
-  /** So os nomes que o servidor gera (`<id>-<n>.<ext>`): o padrao da rota ja nao deixa passar `..` nem barra. */
-  function serveAttachment(res, dia, nome) {
+  /**
+   * So os nomes que o servidor (ou `deus chat enviar --arquivo`) gera (`<id>-<n>.<ext>`): o padrao da rota ja nao deixa passar `..` nem barra.
+   * Imagem abre na pagina; o resto e download com o nome de `?nome=` (o que o DEUS enviou), sempre atras da autenticacao do console.
+   */
+  function serveAttachment(req, res, dia, nome) {
     const file = join(root, 'chat', 'anexos', dia, nome)
     if (!existsSync(file)) {
       res.writeHead(404)
@@ -102,9 +105,11 @@ export function createChatRoutes({ root, git = null, registrar = () => {}, avisa
     }
     res.writeHead(200, {
       'content-type': contentTypeOf(nome),
+      'content-disposition': dispositionOf(nome, new URL(req.url, 'http://x').searchParams.get('nome')),
       // O nome tem o id da mensagem: o conteudo nunca muda, entao o navegador pode guardar para sempre.
       'cache-control': `private, max-age=${ONE_YEAR_S}, immutable`,
       'x-content-type-options': 'nosniff',
+      'content-security-policy': "default-src 'none'; sandbox",
     })
     res.end(readFileSync(file))
     return true
@@ -114,7 +119,7 @@ export function createChatRoutes({ root, git = null, registrar = () => {}, avisa
     if (rota === '/api/chat' && req.method === 'POST') return send(req, res)
     if (rota === '/api/chat/attachments' && req.method === 'POST') return sendWithAttachments(req, res)
     const anexo = req.method === 'GET' ? ATTACHMENT_FILE.exec(rota) : null
-    if (anexo) return serveAttachment(res, anexo[1], anexo[2])
+    if (anexo) return serveAttachment(req, res, anexo[1], anexo[2])
     if (rota !== '/api/chat' || req.method !== 'GET') return false
     const q = new URL(req.url, 'http://x').searchParams
     if (q.get('q')) return json(res, { mensagens: search(root, q.get('q')) }), true
