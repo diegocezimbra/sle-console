@@ -7,8 +7,8 @@ import { randomUUID } from 'node:crypto'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
-export const AUTORES = ['diego', 'deus']
-export const LIMITE_TEXTO_CHAT = 20_000
+export const AUTHORS = ['diego', 'deus']
+export const MAX_TEXT_LENGTH = 20_000
 const ARQUIVO_DIA = /^(\d{4}-\d{2}-\d{2})\.jsonl$/
 
 /**
@@ -29,15 +29,15 @@ const PADROES_SEGREDO = [
   /\b(?:password|passwd|senha|token|secret|api[_-]?key)\s*[=:]\s*\S{6,}/i,
 ]
 
-export function pareceSegredo(texto) {
+export function looksLikeSecret(texto) {
   return PADROES_SEGREDO.some((p) => p.test(texto))
 }
 
-const dirChat = (raiz) => join(raiz, 'chat')
+const dirChat = (root) => join(root, 'chat')
 
-/** Dias com arquivo, do mais recente para o mais antigo. */
-export function listarDias(raiz) {
-  const dir = dirChat(raiz)
+/** Dias com file, do mais recente para o mais antigo. */
+export function listDays(root) {
+  const dir = dirChat(root)
   if (!existsSync(dir)) return []
   return readdirSync(dir)
     .map((f) => ARQUIVO_DIA.exec(f)?.[1])
@@ -47,10 +47,10 @@ export function listarDias(raiz) {
 }
 
 /** Linha corrompida e ignorada: um jsonl com meia linha nao pode derrubar a tela. */
-export function mensagensDoDia(raiz, dia) {
+export function messagesOfDay(root, dia) {
   let bruto
   try {
-    bruto = readFileSync(join(dirChat(raiz), `${dia}.jsonl`), 'utf8')
+    bruto = readFileSync(join(dirChat(root), `${dia}.jsonl`), 'utf8')
   } catch {
     return []
   }
@@ -59,7 +59,7 @@ export function mensagensDoDia(raiz, dia) {
     if (!linha.trim()) continue
     try {
       const m = JSON.parse(linha)
-      if (m && AUTORES.includes(m.de) && typeof m.texto === 'string' && m.ts) saida.push(m)
+      if (m && AUTHORS.includes(m.de) && typeof m.texto === 'string' && m.ts) saida.push(m)
     } catch {
       /* ignora */
     }
@@ -72,33 +72,33 @@ export function mensagensDoDia(raiz, dia) {
  * sem `antes`, os mais recentes). Devolve em ordem cronologica e o cursor
  * (`proximo`) para carregar o pedaco mais antigo, ou null se acabou.
  */
-export function pagina(raiz, { antes = null, dias = 2 } = {}) {
-  const todos = listarDias(raiz).filter((d) => !antes || d < antes)
+export function page(root, { antes = null, dias = 2 } = {}) {
+  const todos = listDays(root).filter((d) => !antes || d < antes)
   const escolhidos = todos.slice(0, dias)
-  const mensagens = escolhidos.slice().reverse().flatMap((d) => mensagensDoDia(raiz, d))
+  const mensagens = escolhidos.slice().reverse().flatMap((d) => messagesOfDay(root, d))
   const ultimo = escolhidos[escolhidos.length - 1]
   const restam = ultimo !== undefined && todos.length > escolhidos.length
   return { mensagens, proximo: restam ? ultimo : null }
 }
 
-export function desde(raiz, ts) {
-  const dias = listarDias(raiz)
+export function since(root, ts) {
+  const dias = listDays(root)
   const saida = []
   const corte = String(ts).slice(0, 10)
   for (const d of dias) {
     if (d < corte) break
-    saida.push(...mensagensDoDia(raiz, d).filter((m) => m.ts > ts))
+    saida.push(...messagesOfDay(root, d).filter((m) => m.ts > ts))
   }
   return saida.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0))
 }
 
 /** Busca por texto (sem acento nem caixa) em todo o historico, mais recentes primeiro. */
-export function buscar(raiz, termo, limite = 100) {
+export function search(root, termo, limite = 100) {
   const alvo = normaliza(termo)
   if (!alvo) return []
   const achadas = []
-  for (const d of listarDias(raiz)) {
-    const doDia = mensagensDoDia(raiz, d).filter((m) => normaliza(m.texto).includes(alvo))
+  for (const d of listDays(root)) {
+    const doDia = messagesOfDay(root, d).filter((m) => normaliza(m.texto).includes(alvo))
     achadas.push(...doDia.reverse())
     if (achadas.length >= limite) break
   }
@@ -109,21 +109,22 @@ function normaliza(t) {
   return String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
 }
 
-/** Acrescenta uma mensagem; devolve o caminho relativo a `raiz` para o commit. */
-export function acrescentar(raiz, { de, texto, agora = new Date() }) {
-  if (!AUTORES.includes(de)) return { ok: false, codigo: 422, erro: 'autor invalido' }
+/** Acrescenta uma mensagem (segredo: aviso por padrao, 422 com `blockSecret`); devolve o caminho relativo a `root` para o commit. */
+export function append(root, { de, texto, agora = new Date(), blockSecret = false }) {
+  if (!AUTHORS.includes(de)) return { ok: false, code: 422, error: 'autor invalido' }
   const limpo = String(texto ?? '').trim()
-  if (!limpo) return { ok: false, codigo: 422, erro: 'texto obrigatorio' }
-  if (limpo.length > LIMITE_TEXTO_CHAT) {
-    return { ok: false, codigo: 422, erro: `texto acima de ${LIMITE_TEXTO_CHAT} caracteres` }
+  if (!limpo) return { ok: false, code: 422, error: 'texto obrigatorio' }
+  if (limpo.length > MAX_TEXT_LENGTH) {
+    return { ok: false, code: 422, error: `texto acima de ${MAX_TEXT_LENGTH} caracteres` }
   }
-  if (pareceSegredo(limpo)) {
-    return { ok: false, codigo: 422, erro: 'a mensagem parece conter token ou senha; o chat vai para o git, nao envie segredo' }
+  const secret = looksLikeSecret(limpo)
+  if (secret && blockSecret) {
+    return { ok: false, code: 422, error: 'a mensagem parece conter token ou senha; o chat vai para o git, nao envie segredo' }
   }
   const ts = agora.toISOString()
-  const mensagem = { ts, de, texto: limpo, id: `${ts.replace(/\D/g, '').slice(0, 17)}-${randomUUID().slice(0, 8)}` }
+  const message = { ts, de, texto: limpo, id: `${ts.replace(/\D/g, '').slice(0, 17)}-${randomUUID().slice(0, 8)}` }
   const relativo = join('chat', `${ts.slice(0, 10)}.jsonl`)
-  mkdirSync(dirChat(raiz), { recursive: true })
-  appendFileSync(join(raiz, relativo), JSON.stringify(mensagem) + '\n')
-  return { ok: true, mensagem, arquivo: relativo }
+  mkdirSync(dirChat(root), { recursive: true })
+  appendFileSync(join(root, relativo), JSON.stringify(message) + '\n')
+  return { ok: true, message, file: relativo, ...(secret && { warning: 'secret' }) }
 }

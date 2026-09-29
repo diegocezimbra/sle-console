@@ -87,6 +87,7 @@ const { servidor, observador, runner, otlp, pararGit, pararPublicarLocal } = cri
   tetoDiarioUsd,
   git,
   publicarLocal,
+  credenciaisDir: process.env.SLE_CREDENCIAIS_DIR ?? join(INSTALACAO, 'credenciais'),
 })
 
 servidor.listen(porta, host, () => {

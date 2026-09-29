@@ -19,6 +19,7 @@ import { indexarCards } from './cards.js'
 import { diffDoArquivo, estadoDoGit, historico, prsAbertos } from './repo.js'
 import { observarArvore } from './watcher.js'
 import { conter, salvarArquivo } from './escrita.js'
+import { chavesDoCard, destinatarioDoAmbiente, salvarCredencial, statusDasChaves } from './credenciais.js'
 import { testarComando } from './verificacao.js'
 import { Runner } from './runner.js'
 import { decidirGate } from './gates.js'
@@ -26,7 +27,7 @@ import { calcularMetricas } from './metricas.js'
 import { montarHistorico } from './historico.js'
 import { extrairMedidas } from './otel.js'
 import { COLUNAS, lerCard } from './cards.js'
-import { criarRotasChat } from './chatRotas.js'
+import { createChatRoutes } from './chat-routes.js'
 import { descobrirProjetos, invalidarCache, resolverProjeto } from './projetos.js'
 import {
   agentesDeTodos,
@@ -50,6 +51,7 @@ const TTL_ESTADO_PUBLICO_MS = 10 * 60_000
 const ESTATICOS = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
+  '/credenciais.js': ['credenciais.js', 'text/javascript; charset=utf-8'],
   '/style.css': ['style.css', 'text/css; charset=utf-8'],
   '/chat': ['chat.html', 'text/html; charset=utf-8'],
   '/chat.js': ['chat.js', 'text/javascript; charset=utf-8'],
@@ -63,6 +65,7 @@ const ESTATICOS = {
  */
 /** Limite da resposta do Diego (caracteres): cabe um curl/log colado inteiro. */
 const LIMITE_TEXTO_RESPOSTA = 1_000_000
+const LIMITE_CORPO_CREDENCIAL = 128 * 1024 // valor de 64 KB + envelope JSON (escapes)
 
 export function criarDaemon({
   dados,
@@ -75,6 +78,9 @@ export function criarDaemon({
   // em `publicoPath` e empurra pro git a cada `intervalMs` -- é o que o console em modo git
   // lê pra popular AGENTES e a régua, já que não tem rede direta até aqui pros hooks de sessão.
   publicarLocal = null,
+  credenciaisDir = join(dados, '..', 'credenciais'), // volume privado dos `.age` (fora do git)
+  ageBin = 'age',
+  ageRecipient = destinatarioDoAmbiente(), // só do env do container, nunca do clone git
 }) {
   const estado = new Estado(dados)
   const runner = new Runner(projeto, { tetoDiarioUsd })
@@ -304,6 +310,34 @@ export function criarDaemon({
       } catch {
         return fim(res, 404)
       }
+    }
+
+    // CARD-202: cofre de credenciais de teste. A API só devolve NOME + STATUS; o valor entra por PUT, é criptografado
+    // com a chave pública do DEUS e nunca mais sai daqui (o DEUS puxa o `.age` por SSH e apaga).
+    if (req.method === 'GET' && /^\/api\/cards\/[^/]+\/credentials$/.test(rota)) {
+      const id = decodeURIComponent(rota.split('/')[3])
+      const card = indice().cards.find((c) => c.id === id) ?? achadoEmTodos(id)
+      if (!card) return fim(res, 404)
+      const chaves = chavesDoCard(card.corpo)
+      return json(res, { credentials: statusDasChaves({ chaves, dirAge: credenciaisDir, raizPublica: projeto }) })
+    }
+    if (req.method === 'PUT' && /^\/api\/credentials\/[^/]+$/.test(rota)) {
+      const nome = decodeURIComponent(rota.split('/')[3])
+      return lerCorpo(req, LIMITE_CORPO_CREDENCIAL, (corpo) => {
+        if (corpo === null) {
+          res.writeHead(413, { 'content-type': 'application/json; charset=utf-8' })
+          return res.end(JSON.stringify({ erro: 'corpo acima do limite' }))
+        }
+        let valor
+        try {
+          valor = JSON.parse(corpo).value
+        } catch {
+          valor = undefined
+        }
+        const r = salvarCredencial({ dirAge: credenciaisDir, destinatario: ageRecipient, nome, valor, ageBin })
+        res.writeHead(r.ok ? 200 : r.codigo, { 'content-type': 'application/json; charset=utf-8' })
+        res.end(JSON.stringify(r.ok ? { ok: true, name: r.name, status: r.status } : { erro: r.erro }))
+      })
     }
 
     if (req.method === 'POST' && /^\/api\/cards\/[^/]+\/answer$/.test(rota)) {
@@ -540,8 +574,8 @@ export function criarDaemon({
 
   const raizDeus = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
   // Chat do Diego (CARD-208): `chat/` no clone em modo git; no checkout do 00-DEUS no console local.
-  const rotasChat = criarRotasChat({
-    raiz: process.env.CONSOLE_CHAT_DIR || (git ? git.dataDir : raizDeus),
+  const rotasChat = createChatRoutes({
+    root: process.env.CONSOLE_CHAT_DIR || (git ? git.dataDir : raizDeus),
     git,
     registrar,
   })
@@ -759,10 +793,25 @@ export function criarDaemon({
     })
   }
 
-  function lerCorpo(req, pronto) {
+  /** `lerCorpo(req, pronto)` ou `lerCorpo(req, limiteBytes, pronto)`: acima do limite entrega `null` e descarta o resto. */
+  function lerCorpo(req, limiteOuPronto, prontoOpc) {
+    const [limite, pronto] = typeof limiteOuPronto === 'function' ? [Infinity, limiteOuPronto] : [limiteOuPronto, prontoOpc]
     let corpo = ''
-    req.on('data', (c) => (corpo += c))
-    req.on('end', () => pronto(corpo))
+    let bytes = 0
+    let estourou = false
+    req.on('data', (c) => {
+      if (estourou) return
+      bytes += c.length
+      if (bytes > limite) {
+        estourou = true
+        corpo = ''
+        return pronto(null)
+      }
+      corpo += c
+    })
+    req.on('end', () => {
+      if (!estourou) pronto(corpo)
+    })
   }
 
   function abrirStream(res) {

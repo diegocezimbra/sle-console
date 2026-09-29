@@ -1,4 +1,5 @@
 // Tela da Fase 2: observar e ler. Nada aqui escreve no daemon.
+import { pintarCredenciais as pintarFormularioCredenciais } from '/credenciais.js'
 const CORES = { L1: '#4aa3df', L2: '#c08b3e', L3: '#7b5ec7' }
 const COLUNAS = ['backlog', 'pendente-diego', 'refinamento', 'aprovado', 'doing', 'review', 'testando', 'done', 'recurring']
 // Só a coluna de decisão do Diego precisa de rótulo -- as demais já se leem pelo próprio id.
@@ -585,6 +586,7 @@ async function abrirCard(id) {
 
   $('modal-corpo').innerHTML = markdownSeguro(semSecaoDeCredenciais(c.corpo ?? ''))
   pintarCredenciais(c)
+  pintarFormularioCredenciais(c.id, $('modal-cred-form'), comProjeto)
   pintarRespostas(c)
   pintarSeletorOpcoes(c)
   $('modal-resolver').hidden = c.coluna !== 'pendente-diego'
@@ -625,6 +627,7 @@ function erroDeCard(id) {
   $('modal-nova-guia').href = `/card/${encodeURIComponent(id)}`
   $('modal-meta').replaceChildren()
   $('modal-credenciais').hidden = true
+  $('modal-cred-form').hidden = true
   $('modal-corpo').innerHTML = `<p>Não achei o card <b>${id}</b> em nenhum projeto observado.</p>`
   $('modal-respostas').replaceChildren()
   $('modal-resposta-opcoes').replaceChildren()

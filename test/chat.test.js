@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { acrescentar, buscar, desde, listarDias, mensagensDoDia, pagina, pareceSegredo } from '../src/chat.js'
+import { append, search, since, listDays, messagesOfDay, page, looksLikeSecret } from '../src/chat.js'
 import { renderMarkdown } from '../web/chat-md.js'
 
 const raiz = () => mkdtempSync(join(tmpdir(), 'sle-chat-'))
@@ -13,48 +13,51 @@ const em = (r, dia, msgs) => {
 }
 const m = (ts, de, texto) => ({ ts, de, texto, id: `id-${ts}` })
 
-test('acrescentar grava jsonl append-only no arquivo do dia com ts, de, texto e id', () => {
+test('append grava jsonl append-only no arquivo do dia com ts, de, texto e id', () => {
   const r = raiz()
-  const a = acrescentar(r, { de: 'diego', texto: ' oi ', agora: new Date('2026-09-29T10:00:00Z') })
-  const b = acrescentar(r, { de: 'deus', texto: 'olá', agora: new Date('2026-09-29T10:00:05Z') })
-  assert.equal(a.arquivo, 'chat/2026-09-29.jsonl')
-  const linhas = readFileSync(join(r, a.arquivo), 'utf8').trim().split('\n').map(JSON.parse)
+  const a = append(r, { de: 'diego', texto: ' oi ', agora: new Date('2026-09-29T10:00:00Z') })
+  const b = append(r, { de: 'deus', texto: 'olá', agora: new Date('2026-09-29T10:00:05Z') })
+  assert.equal(a.file, 'chat/2026-09-29.jsonl')
+  const linhas = readFileSync(join(r, a.file), 'utf8').trim().split('\n').map(JSON.parse)
   assert.equal(linhas.length, 2)
   assert.deepEqual(Object.keys(linhas[0]).sort(), ['de', 'id', 'texto', 'ts'])
   assert.equal(linhas[0].texto, 'oi')
-  assert.notEqual(a.mensagem.id, b.mensagem.id)
+  assert.notEqual(a.message.id, b.message.id)
 })
 
-test('acrescentar recusa vazio, autor invalido, texto enorme e segredo', () => {
+test('append recusa vazio, autor invalido, texto enorme e segredo', () => {
   const r = raiz()
-  assert.equal(acrescentar(r, { de: 'diego', texto: '   ' }).ok, false)
-  assert.equal(acrescentar(r, { de: 'outro', texto: 'x' }).ok, false)
-  assert.equal(acrescentar(r, { de: 'diego', texto: 'x'.repeat(20_001) }).ok, false)
-  const s = acrescentar(r, { de: 'diego', texto: 'meu token ghp_' + 'a'.repeat(30) })
+  assert.equal(append(r, { de: 'diego', texto: '   ' }).ok, false)
+  assert.equal(append(r, { de: 'outro', texto: 'x' }).ok, false)
+  assert.equal(append(r, { de: 'diego', texto: 'x'.repeat(20_001) }).ok, false)
+  const s = append(r, { de: 'diego', texto: 'meu token ghp_' + 'a'.repeat(30), blockSecret: true })
   assert.equal(s.ok, false)
-  assert.match(s.erro, /token ou senha/)
-  assert.deepEqual(listarDias(r), [])
+  assert.match(s.error, /token ou senha/)
+  assert.deepEqual(listDays(r), [])
+  const aviso = append(r, { de: 'diego', texto: 'ghp_' + 'a'.repeat(30) })
+  assert.equal(aviso.ok, true, 'sem blockSecret a mensagem e aceita')
+  assert.equal(aviso.warning, 'secret')
 })
 
-test('pareceSegredo pega as familias conhecidas e deixa texto normal passar', () => {
+test('looksLikeSecret pega as familias conhecidas e deixa texto normal passar', () => {
   for (const t of ['ghp_' + 'A'.repeat(36), 'sk_live_' + 'a'.repeat(20), '123456789:' + 'A'.repeat(35), 'senha=abc12345',
     'AKIA' + 'A'.repeat(16), '-----BEGIN RSA PRIVATE KEY-----', 'eyJhbGciOiJIUzI1.eyJzdWIiOiIxMjM0.abcdefghijkl']) {
-    assert.equal(pareceSegredo(t), true, t)
+    assert.equal(looksLikeSecret(t), true, t)
   }
   for (const t of ['bom dia', 'o token expira em 7 dias', 'CARD-208 pronto', 'https://x.com/a?b=c']) {
-    assert.equal(pareceSegredo(t), false, t)
+    assert.equal(looksLikeSecret(t), false, t)
   }
 })
 
-test('pagina devolve os dias mais recentes em ordem cronologica e o cursor dos antigos', () => {
+test('page devolve os dias mais recentes em ordem cronologica e o cursor dos antigos', () => {
   const r = raiz()
   em(r, '2026-09-27', [m('2026-09-27T10:00:00Z', 'diego', 'a')])
   em(r, '2026-09-28', [m('2026-09-28T10:00:00Z', 'deus', 'b')])
   em(r, '2026-09-29', [m('2026-09-29T09:00:00Z', 'diego', 'c'), m('2026-09-29T09:01:00Z', 'deus', 'd')])
-  const p1 = pagina(r, { dias: 2 })
+  const p1 = page(r, { dias: 2 })
   assert.deepEqual(p1.mensagens.map((x) => x.texto), ['b', 'c', 'd'])
   assert.equal(p1.proximo, '2026-09-28')
-  const p2 = pagina(r, { antes: p1.proximo, dias: 2 })
+  const p2 = page(r, { antes: p1.proximo, dias: 2 })
   assert.deepEqual(p2.mensagens.map((x) => x.texto), ['a'])
   assert.equal(p2.proximo, null)
 })
@@ -64,21 +67,31 @@ test('linha corrompida no jsonl e ignorada', () => {
   mkdirSync(join(r, 'chat'))
   writeFileSync(join(r, 'chat', '2026-09-29.jsonl'),
     JSON.stringify(m('2026-09-29T10:00:00Z', 'diego', 'ok')) + '\n{meia linha\n{"de":"x"}\n')
-  assert.equal(mensagensDoDia(r, '2026-09-29').length, 1)
+  assert.equal(messagesOfDay(r, '2026-09-29').length, 1)
 })
 
-test('buscar ignora acento e caixa, mais recentes primeiro', () => {
+test('search ignora acento e caixa, mais recentes primeiro', () => {
   const r = raiz()
   em(r, '2026-09-28', [m('2026-09-28T10:00:00Z', 'diego', 'Aprovação do PR')])
   em(r, '2026-09-29', [m('2026-09-29T10:00:00Z', 'deus', 'aprovacao feita'), m('2026-09-29T11:00:00Z', 'deus', 'outra coisa')])
-  assert.deepEqual(buscar(r, 'APROVACAO').map((x) => x.texto), ['aprovacao feita', 'Aprovação do PR'])
-  assert.deepEqual(buscar(r, ''), [])
+  assert.deepEqual(search(r, 'APROVACAO').map((x) => x.texto), ['aprovacao feita', 'Aprovação do PR'])
+  assert.deepEqual(search(r, ''), [])
 })
 
-test('desde devolve so o que veio depois do carimbo', () => {
+test('since devolve so o que veio depois do carimbo', () => {
   const r = raiz()
   em(r, '2026-09-29', [m('2026-09-29T10:00:00Z', 'diego', 'velha'), m('2026-09-29T10:05:00Z', 'deus', 'nova')])
-  assert.deepEqual(desde(r, '2026-09-29T10:00:00Z').map((x) => x.texto), ['nova'])
+  assert.deepEqual(since(r, '2026-09-29T10:00:00Z').map((x) => x.texto), ['nova'])
+})
+
+test('XSS: HTML cru vira texto, javascript: nao vira link, links levam noopener', () => {
+  const img = renderMarkdown('<img src=x onerror=alert(1)>')
+  assert.doesNotMatch(img, /<img/)
+  assert.match(img, /&lt;img src=x onerror=alert\(1\)&gt;/)
+  assert.doesNotMatch(renderMarkdown('[a](javascript:alert(1)) [b](data:text/html,x)'), /<a /)
+  assert.doesNotMatch(renderMarkdown('[a](https://x.com" onmouseover="alert(1))'), /<[^>]*\sonmouseover=/)
+  assert.doesNotMatch(renderMarkdown('**<b onclick=1>**'), /<b /)
+  for (const a of renderMarkdown('https://a.com e [b](https://b.com)').match(/<a [^>]*>/g)) assert.match(a, /rel="noopener noreferrer"/)
 })
 
 test('markdown: negrito, lista, link, bloco de codigo e nada de HTML cru', () => {

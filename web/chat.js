@@ -2,6 +2,12 @@ import { renderMarkdown } from './chat-md.js'
 
 const $ = (id) => document.getElementById(id)
 const thread = $('thread')
+const aviso = (texto) => {
+  const p = document.createElement('p')
+  p.className = 'aviso'
+  p.textContent = texto
+  thread.replaceChildren(p)
+}
 const AUTOR = { diego: 'Diego', deus: 'DEUS' }
 const POLL_MS = 8000
 let ultimoTs = ''
@@ -29,7 +35,20 @@ function baloes(msgs, { destaque = false, dia = null } = {}) {
     el.className = `msg ${m.de}${destaque ? ' achada' : ''}`
     el.dataset.id = m.id
     el.dataset.ts = m.ts
-    el.innerHTML = `<div class="meta"><span>${AUTOR[m.de]}</span><time datetime="${m.ts}">${fmtHora(m.ts)}</time></div>${renderMarkdown(m.texto)}`
+    // Cabecalho por DOM/textContent (dado do jsonl nunca vira HTML); so o corpo passa por
+    // renderMarkdown, que escapa tudo antes de reintroduzir marcas.
+    const meta = document.createElement('div')
+    meta.className = 'meta'
+    const autor = document.createElement('span')
+    autor.textContent = AUTOR[m.de] ?? '?'
+    const hora = document.createElement('time')
+    hora.dateTime = String(m.ts)
+    hora.textContent = fmtHora(m.ts)
+    meta.append(autor, hora)
+    const corpo = document.createElement('div')
+    corpo.className = 'corpo'
+    corpo.innerHTML = renderMarkdown(m.texto)
+    el.append(meta, corpo)
     frag.append(el)
   }
   return frag
@@ -51,7 +70,7 @@ async function carregarInicial() {
   $('carregando')?.remove()
   proximo = p
   thread.replaceChildren()
-  if (!mensagens.length) thread.innerHTML = '<p class="aviso">nenhuma mensagem ainda</p>'
+  if (!mensagens.length) aviso('nenhuma mensagem ainda')
   else thread.append(baloes(mensagens))
   mensagens.forEach((m) => vistos.add(m.id))
   ultimoTs = mensagens.at(-1)?.ts ?? ''
@@ -92,8 +111,13 @@ async function buscarNovas() {
 async function enviar(texto) {
   const erro = $('erro')
   erro.hidden = true
+  erro.textContent = ''
   try {
-    const { mensagem } = await api('/api/chat', { method: 'POST', body: JSON.stringify({ texto }) })
+    const { mensagem, aviso: alerta } = await api('/api/chat', { method: 'POST', body: JSON.stringify({ texto }) })
+    if (alerta === 'secret') {
+      erro.textContent = 'Parece conter segredo; o DEUS não vai repetir. A mensagem foi enviada, considere rotacionar a credencial.'
+      erro.hidden = false
+    }
     $('texto').value = ''
     autoAltura()
     if (!vistos.has(mensagem.id)) {
@@ -128,7 +152,7 @@ $('busca').addEventListener('input', (e) => {
     modoBusca = true
     const { mensagens } = await api(`/api/chat?q=${encodeURIComponent(termo)}`)
     thread.replaceChildren()
-    if (!mensagens.length) thread.innerHTML = '<p class="aviso">nada encontrado</p>'
+    if (!mensagens.length) aviso('nada encontrado')
     else thread.append(baloes(mensagens.slice().reverse(), { destaque: true }))
     thread.scrollTop = 0
   }, 250)
@@ -148,5 +172,5 @@ $('envio').addEventListener('submit', (e) => {
 })
 thread.addEventListener('scroll', () => { if (thread.scrollTop < 120) carregarAntigas() })
 
-carregarInicial().catch((e) => { thread.innerHTML = `<p class="aviso">falha ao carregar: ${e.message}</p>` })
+carregarInicial().catch((e) => { aviso(`falha ao carregar: ${e.message}`) })
 setInterval(buscarNovas, POLL_MS)

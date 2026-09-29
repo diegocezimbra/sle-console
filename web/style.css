@@ -275,3 +275,15 @@ color:var(--l2);font-size:11px;line-height:1.6}
   .modal-acoes{flex-wrap:wrap;justify-content:flex-end}
 }
 nav .link-chat{color:var(--fraco);text-decoration:none;padding:3px 10px;border-radius:4px}nav .link-chat:hover{color:var(--texto)}
+
+/* CARD-202: credenciais de teste no card */
+.modal-cred-form { margin: 12px 0; padding: 12px; border: 1px solid var(--borda, #333); border-radius: 8px; }
+.modal-cred-form h3 { margin: 0 0 8px; font-size: 14px; }
+.cred-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.cred-linha { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.cred-status { font-size: 12px; opacity: 0.8; }
+.cred-ausente .cred-status { color: #d9534f; opacity: 1; }
+.cred-preenchida .cred-status { color: #3fb950; opacity: 1; }
+.cred-form { display: flex; flex: 1 1 100%; gap: 8px; align-items: flex-start; }
+.cred-valor { flex: 1; min-height: 32px; font-family: monospace; }
+.cred-msg { color: #d9534f; font-size: 12px; }

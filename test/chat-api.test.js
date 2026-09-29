@@ -54,8 +54,10 @@ test('POST /api/chat grava como Diego e GET devolve a thread', async () => {
   assert.equal(mensagens[0].texto, 'ontem: **negrito**')
 })
 
-test('POST recusa segredo, vazio e corpo enorme', async () => {
-  assert.equal((await post(s.base, 'ghp_' + 'z'.repeat(30))).status, 422)
+test('POST com segredo e aceito com aviso; vazio e corpo enorme sao recusados', async () => {
+  const seg = await post(s.base, 'ghp_' + 'z'.repeat(30))
+  assert.equal(seg.status, 200)
+  assert.equal((await seg.json()).aviso, 'secret')
   assert.equal((await post(s.base, '  ')).status, 422)
   assert.equal((await post(s.base, 'x'.repeat(70_000))).status, 413)
 })
@@ -110,11 +112,16 @@ test('mobile: a pagina monta, envia com Enter, Shift+Enter nao envia, busca filt
   assert.deepEqual(browser.erros, [])
   assert.equal(await browser.avaliar(`document.documentElement.scrollWidth <= 390`), true, 'sem rolagem horizontal')
   assert.equal(await browser.avaliar(`document.querySelector('.msg strong')?.textContent`), 'negrito')
+  const antes = await browser.avaliar(`document.querySelectorAll('.msg.diego').length`)
   const alvo = await browser.avaliar(`(() => { const t = document.getElementById('texto'); t.value = 'pelo navegador';
     t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true }));
     return document.querySelectorAll('.msg.diego').length })()`)
-  assert.equal(alvo, 1, 'Shift+Enter nao envia (so a mensagem de antes existe)')
+  assert.equal(alvo, antes, 'Shift+Enter nao envia')
   await browser.avaliar(`document.getElementById('texto').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))`)
+  await browser.avaliar(`(() => { const t = document.getElementById('texto'); t.value = '<img src=x onerror=window.__xss=1>';
+    t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })) })()`)
+  await browser.esperar(`[...document.querySelectorAll('.msg.diego')].some((e) => e.textContent.includes('<img src=x'))`)
+  assert.equal(await browser.avaliar(`window.__xss === undefined && document.querySelectorAll('.msg img').length === 0`), true, 'XSS nao executa')
   await browser.esperar(`[...document.querySelectorAll('.msg.diego')].some((e) => e.textContent.includes('pelo navegador'))`)
   await browser.avaliar(`(() => { const b = document.getElementById('busca'); b.value = 'negrito'; b.dispatchEvent(new Event('input')) })()`)
   await browser.esperar(`document.querySelectorAll('.msg').length === 1`)
