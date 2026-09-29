@@ -16,6 +16,8 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%230f1115'/%3E%3Crect x='3' y='4' width='2' height='8' fill='%234aa3df'/%3E%3Crect x='7' y='6' width='2' height='6' fill='%23c08b3e'/%3E%3Crect x='11' y='3' width='2' height='9' fill='%237b5ec7'/%3E%3C/svg%3E" />
 <!-- CARD-094: o shell do celular so baixa o CSS dele em tela pequena. A media query e a mesma do script abaixo. -->
 <link rel="stylesheet" href="/mobile/mobile.css" media="(max-width: 767px), (pointer: coarse) and (max-height: 500px)" />
+<!-- O shell do celular mora neste HTML: escondido por padrao (o mobile.css, que o mostra, so carrega em tela pequena). -->
+<style>#m-app{display:none}</style>
 <script>
 // Escolhe UM app por carga: shell do celular (web/mobile/) ou desktop (app.js). Em tela pequena ja
 // pede os modulos e o resumo do board agora, em paralelo com o HTML/CSS, em vez de esperar o parse.

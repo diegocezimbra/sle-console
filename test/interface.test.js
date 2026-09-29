@@ -82,3 +82,14 @@ test('o SSE atualiza a tela sem recarregar', { skip: pular }, async () => {
   const conexao = await browser.avaliar(`document.getElementById('conexao').textContent`)
   assert.match(conexao, /ao vivo/)
 })
+
+// CARD-094: o HTML do shell do celular mora no mesmo index.html. No desktop (mobile.css nem carrega) ele
+// aparecia embaixo da pagina como um "PENDENTES" solto e a pagina ganhava rolagem.
+test('o shell do celular nao vaza para o desktop', { skip: pular }, async () => {
+  const r = await browser.avaliar(`(() => {
+    const app = document.getElementById('m-app')
+    return { modo: document.documentElement.dataset.modo, display: getComputedStyle(app).display, titleVisible: !!document.getElementById('m-title').offsetParent,
+      cardHidden: document.getElementById('m-card').hidden, toastHidden: document.getElementById('m-toast').hidden }
+  })()`)
+  assert.deepEqual(r, { modo: 'desktop', display: 'none', titleVisible: false, cardHidden: true, toastHidden: true })
+})

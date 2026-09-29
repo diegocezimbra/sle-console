@@ -82,8 +82,8 @@ test('barra de abas no chat: Chat ativo, links das outras telas e contadores', {
   assert.equal(await browser.avaliar(`${q('[data-badge="board"]')}.textContent`), '1')
 })
 
-test('botoes de toque com 44 px ou mais no campo de mensagem e na barra', { skip }, async () => {
-  const small = await browser.avaliar(`[...document.querySelectorAll('#envio button, #envio textarea, #m-tabs a')].filter((e) => e.offsetParent !== null)
+test('botoes de toque com 44 px ou mais no cabecalho, no campo de mensagem e na barra', { skip }, async () => {
+  const small = await browser.avaliar(`[...document.querySelectorAll('header a, header input, #envio button, #envio textarea, #m-tabs a')].filter((e) => e.offsetParent !== null)
     .map((e) => ({ what: e.id || e.className || e.tagName, h: e.getBoundingClientRect().height, w: e.getBoundingClientRect().width })).filter((e) => e.h < 44 || e.w < 44)`)
   assert.deepEqual(small, [])
 })

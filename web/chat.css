@@ -50,6 +50,9 @@ h1{font-size:14px;margin:0;letter-spacing:.1em}
   html,body{overflow:hidden;overscroll-behavior:none}
   /* Abaixo de 16 px o iOS da zoom na pagina ao focar o campo. */
   #texto,#busca{font-size:16px}
+  /* Alvos de toque de 44 px tambem no cabecalho (voltar e busca). */
+  .voltar{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;padding:0}
+  #busca{min-height:44px}
   body{position:fixed;top:0;right:0;bottom:0;left:0;height:auto}
   /* Com a barra de abas embaixo, o recuo da area segura e dela; ao digitar a barra some e o recuo volta para o campo. */
   body:has(#m-tabs:not([hidden])) #envio{padding-bottom:10px}
