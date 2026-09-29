@@ -104,6 +104,10 @@ export async function abrirBrowser() {
       if (r.exceptionDetails) throw new Error(r.exceptionDetails.text)
       return r.result.value
     },
+    /** Redimensiona a viewport (ex.: 400 de largura para o layout mobile). */
+    async viewport(width, height = 800) {
+      await chamar('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
+    },
     async esperar(expressao, { limite = 10000 } = {}) {
       const ate = Date.now() + limite
       let ultimo
