@@ -19,6 +19,9 @@ let base, fechar, browser, projeto
 before(async () => {
   projeto = mkdtempSync(join(tmpdir(), 'sle-prio-'))
   mkdirSync(join(projeto, 'cards', 'backlog'), { recursive: true })
+  mkdirSync(join(projeto, 'cards', 'testando'), { recursive: true })
+  for (const [id, p] of [['CARD-110', 'P1'], ['CARD-111', 'P0']])
+    writeFileSync(join(projeto, 'cards', 'testando', `${id}.md`), `---\nid: ${id}\ntitle: Em teste ${id}\nstatus: testando\nprioridade: ${p}\n---\ncorpo\n`)
   const card = (id, prioridade) =>
     writeFileSync(join(projeto, 'cards', 'backlog', `${id}.md`),
       `---\nid: ${id}\ntitle: Tarefa ${id}\nstatus: backlog${prioridade ? `\nprioridade: ${prioridade}` : ''}\n---\ncorpo\n`)
@@ -45,7 +48,7 @@ test('CARD-120: a barra mostra "todas" + os 5 chips de prioridade, cada um com c
   const rotulos = await browser.avaliar(
     `[...document.querySelectorAll('#filtro-prioridade .chip-prioridade')].map((b) => b.textContent)`)
   assert.deepEqual(rotulos, [
-    'todas (5)', 'URGENTE (1)', 'ALTÍSSIMA (2)', 'ALTA (1)', 'MÉDIA (0)', 'BAIXA (1)',
+    'todas (7)', 'URGENTE (1)', 'ALTÍSSIMA (3)', 'ALTA (2)', 'MÉDIA (0)', 'BAIXA (1)',
   ])
 })
 
@@ -58,14 +61,14 @@ test('CARD-120: cada chip carrega o código P no data-p e no title, pra quem le 
 test('CARD-120: filtro é multi-seleção -- dois chips marcados mostram a união dos dois P', { skip: pular }, async () => {
   await browser.avaliar(`document.querySelector('#filtro-prioridade [data-p="P-1"]').click()`)
   await browser.avaliar(`document.querySelector('#filtro-prioridade [data-p="P1"]').click()`)
-  await browser.esperar(`document.querySelectorAll('#tela-board .card').length === 2`)
+  await browser.esperar(`document.querySelectorAll('#tela-board .card').length === 3`)
   const texto = await browser.avaliar(`document.getElementById('colunas').textContent`)
   assert.match(texto, /CARD-100/)
   assert.match(texto, /CARD-103/)
   assert.doesNotMatch(texto, /CARD-101/)
   // limpa pro proximo teste
   await browser.avaliar(`document.querySelector('#filtro-prioridade .chip-todas').click()`)
-  await browser.esperar(`document.querySelectorAll('#tela-board .card').length === 5`)
+  await browser.esperar(`document.querySelectorAll('#tela-board .card').length === 7`)
 })
 
 test('CARD-120: o filtro escolhido vai pra URL (?p=) e sobrevive a um F5', { skip: pular }, async () => {
@@ -77,7 +80,7 @@ test('CARD-120: o filtro escolhido vai pra URL (?p=) e sobrevive a um F5', { ski
   await browser.esperar(`document.body.dataset.pronto === 'sim'`)
   await browser.avaliar(`document.querySelector('nav button[data-tela="board"]').click()`)
 
-  await browser.esperar(`document.querySelectorAll('#tela-board .card').length === 2`)
+  await browser.esperar(`document.querySelectorAll('#tela-board .card').length === 3`)
   assert.equal(
     await browser.avaliar(`document.querySelector('#filtro-prioridade [data-p="P0"]').getAttribute('aria-pressed')`),
     'true'
@@ -94,4 +97,14 @@ test('CARD-120: o filtro escolhido vai pra URL (?p=) e sobrevive a um F5', { ski
 
 test('a tela nao registra erro de JavaScript em nenhuma aba', { skip: pular }, async () => {
   assert.deepEqual(browser.erros, [], browser.erros.join(' | '))
+})
+
+test('CARD-201: o filtro ?p= vale tambem para a coluna Testando', { skip: pular }, async () => {
+  await browser.avaliar(`document.querySelector('#filtro-prioridade [data-p="P1"]').click()`)
+  await browser.esperar(`location.search.includes('p=P1')`)
+  const col = `document.querySelector('#tela-board .coluna[data-coluna="testando"]')`
+  assert.match(await browser.avaliar(`${col}.textContent`), /CARD-110/)
+  assert.doesNotMatch(await browser.avaliar(`${col}.textContent`), /CARD-111/)
+  assert.match(await browser.avaliar(`${col}.querySelector('h3').textContent`), /1$/)
+  await browser.avaliar(`document.querySelector('#filtro-prioridade .chip-todas').click()`)
 })
