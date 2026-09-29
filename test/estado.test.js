@@ -116,3 +116,12 @@ test('linha corrompida no JSONL nao cega o daemon', () => {
   appendFileSync(join(d, 'events.jsonl'), '{quebrado\n')
   assert.equal(new Estado(d).snapshot().sessoes[0].id, 'boa')
 })
+
+test('CARD-120: a sessao guarda o card (sticky) e o tipo do ultimo evento', () => {
+  const e = new Estado(dir())
+  e.registrar(ev({ session: 's1', kind: 'session.start', card: 'CARD-120' }))
+  e.registrar(ev({ session: 's1', kind: 'tool.post', card: null })) // sem card no evento: mantem o anterior
+  const s = e.snapshot().sessoes[0]
+  assert.equal(s.card, 'CARD-120')
+  assert.equal(s.ultimoPasso, 'tool.post')
+})
