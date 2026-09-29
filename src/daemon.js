@@ -19,7 +19,7 @@ import { indexarCards } from './cards.js'
 import { diffDoArquivo, estadoDoGit, historico, prsAbertos } from './repo.js'
 import { observarArvore } from './watcher.js'
 import { conter, salvarArquivo } from './escrita.js'
-import { chavesDoCard, lerDestinatario, salvarCredencial, statusDasChaves } from './credenciais.js'
+import { chavesDoCard, destinatarioDoAmbiente, salvarCredencial, statusDasChaves } from './credenciais.js'
 import { testarComando } from './verificacao.js'
 import { Runner } from './runner.js'
 import { decidirGate } from './gates.js'
@@ -60,6 +60,7 @@ const ESTATICOS = {
  */
 /** Limite da resposta do Diego (caracteres): cabe um curl/log colado inteiro. */
 const LIMITE_TEXTO_RESPOSTA = 1_000_000
+const LIMITE_CORPO_CREDENCIAL = 128 * 1024 // valor de 64 KB + envelope JSON (escapes)
 
 export function criarDaemon({
   dados,
@@ -74,6 +75,7 @@ export function criarDaemon({
   publicarLocal = null,
   credenciaisDir = join(dados, '..', 'credenciais'), // volume privado dos `.age` (fora do git)
   ageBin = 'age',
+  ageRecipient = destinatarioDoAmbiente(), // só do env do container, nunca do clone git
 }) {
   const estado = new Estado(dados)
   const runner = new Runner(projeto, { tetoDiarioUsd })
@@ -316,14 +318,18 @@ export function criarDaemon({
     }
     if (req.method === 'PUT' && /^\/api\/credentials\/[^/]+$/.test(rota)) {
       const nome = decodeURIComponent(rota.split('/')[3])
-      return lerCorpo(req, (corpo) => {
+      return lerCorpo(req, LIMITE_CORPO_CREDENCIAL, (corpo) => {
+        if (corpo === null) {
+          res.writeHead(413, { 'content-type': 'application/json; charset=utf-8' })
+          return res.end(JSON.stringify({ erro: 'corpo acima do limite' }))
+        }
         let valor
         try {
           valor = JSON.parse(corpo).value
         } catch {
           valor = undefined
         }
-        const r = salvarCredencial({ dirAge: credenciaisDir, destinatario: lerDestinatario(projeto) ?? lerDestinatario(raizDeus), nome, valor, ageBin })
+        const r = salvarCredencial({ dirAge: credenciaisDir, destinatario: ageRecipient, nome, valor, ageBin })
         res.writeHead(r.ok ? 200 : r.codigo, { 'content-type': 'application/json; charset=utf-8' })
         res.end(JSON.stringify(r.ok ? { ok: true, name: r.name, status: r.status } : { erro: r.erro }))
       })
@@ -775,10 +781,25 @@ export function criarDaemon({
     })
   }
 
-  function lerCorpo(req, pronto) {
+  /** `lerCorpo(req, pronto)` ou `lerCorpo(req, limiteBytes, pronto)`: acima do limite entrega `null` e descarta o resto. */
+  function lerCorpo(req, limiteOuPronto, prontoOpc) {
+    const [limite, pronto] = typeof limiteOuPronto === 'function' ? [Infinity, limiteOuPronto] : [limiteOuPronto, prontoOpc]
     let corpo = ''
-    req.on('data', (c) => (corpo += c))
-    req.on('end', () => pronto(corpo))
+    let bytes = 0
+    let estourou = false
+    req.on('data', (c) => {
+      if (estourou) return
+      bytes += c.length
+      if (bytes > limite) {
+        estourou = true
+        corpo = ''
+        return pronto(null)
+      }
+      corpo += c
+    })
+    req.on('end', () => {
+      if (!estourou) pronto(corpo)
+    })
   }
 
   function abrirStream(res) {

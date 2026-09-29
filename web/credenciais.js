@@ -15,12 +15,12 @@ function linhaDaChave({ name, status }, aoSalvar) {
 
   const form = document.createElement('form')
   form.className = 'cred-form'
-  const campo = document.createElement('textarea')
-  campo.rows = 1
+  const campo = document.createElement('input')
+  campo.type = 'password'
   campo.className = 'cred-valor'
   campo.setAttribute('aria-label', `valor de ${name}`)
   campo.placeholder = 'valor (não fica visível depois de salvo)'
-  campo.autocomplete = 'off'
+  campo.autocomplete = 'new-password'
   campo.spellcheck = false
   const botao = document.createElement('button')
   botao.type = 'submit'

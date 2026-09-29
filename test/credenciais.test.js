@@ -8,13 +8,13 @@ import { criarDaemon } from '../src/daemon.js'
 import { chavesDoCard, statusDasChaves } from '../src/credenciais.js'
 
 const SEGREDO = 'S3gredo-de-teste-#42'
-let base, fechar, projeto, dirAge, tmp, chavePrivada
+let base, fechar, projeto, dirAge, tmp, chavePrivada, publica
 
 before(async () => {
   tmp = mkdtempSync(join(tmpdir(), 'sle-cred-'))
   chavePrivada = join(tmp, 'k')
   spawnSync('age-keygen', ['-o', chavePrivada])
-  const publica = spawnSync('age-keygen', ['-y', chavePrivada], { encoding: 'utf8' }).stdout.trim()
+  publica = spawnSync('age-keygen', ['-y', chavePrivada], { encoding: 'utf8' }).stdout.trim()
   projeto = join(tmp, 'repo')
   mkdirSync(join(projeto, 'estado-publico'), { recursive: true })
   mkdirSync(join(projeto, 'cards', 'review'), { recursive: true })
@@ -24,7 +24,7 @@ before(async () => {
     '---\nid: CARD-7\ntitle: X\nstatus: review\n---\n## Como testar\n1. abrir\n\n## Credenciais necessárias\n\n- CENVIA_PROD_LOGIN — status: ausente\n- META_TEST_ACCOUNT — status: preenchida\n- _NENHUMA_ — status: preenchida\n\n## Notas\n- NAO_E_CHAVE\n'
   )
   dirAge = join(tmp, 'credenciais')
-  const d = criarDaemon({ dados: join(tmp, 'dados', 'console'), projeto, credenciaisDir: dirAge })
+  const d = criarDaemon({ dados: join(tmp, 'dados', 'console'), projeto, credenciaisDir: dirAge, ageRecipient: publica })
   await new Promise((r) => d.servidor.listen(0, '127.0.0.1', r))
   base = `http://127.0.0.1:${d.servidor.address().port}`
   fechar = () => new Promise((r) => (d.observador.parar(), d.servidor.closeAllConnections(), d.servidor.close(r)))
@@ -86,15 +86,57 @@ test('nome inválido, valor vazio e valor enorme são recusados com 422 e nada �
   assert.deepEqual(readdirSync(dirAge), ['CENVIA_PROD_LOGIN.age'])
 })
 
-test('sem chave pública do DEUS: 503 e nada gravado', () => {
-  const vazio = mkdtempSync(join(tmpdir(), 'sle-cred-sem-'))
-  const r = spawnSync('node', ['-e', `
-    import('${join(process.cwd(), 'src/credenciais.js')}').then(m => {
-      const r = m.salvarCredencial({ dirAge: '${vazio}/c', destinatario: null, nome: 'ABC_DEF', valor: 'x' })
-      console.log(JSON.stringify(r))
-    })`], { encoding: 'utf8' })
-  assert.equal(JSON.parse(r.stdout).codigo, 503)
-  assert.deepEqual(readdirSync(vazio), [])
+const subir = async (opcoes) => {
+  const d = criarDaemon({ dados: join(tmp, 'dados', 'x' + Math.random()), projeto, ...opcoes })
+  await new Promise((r) => d.servidor.listen(0, '127.0.0.1', r))
+  return { url: `http://127.0.0.1:${d.servidor.address().port}`, fechar: () => new Promise((r) => (d.observador.parar(), d.servidor.closeAllConnections(), d.servidor.close(r))) }
+}
+
+test('sem DEUS_AGE_RECIPIENT: 503 e nada gravado, mesmo com age-recipient.txt no clone git', async () => {
+  const vazio = join(tmp, 'sem-chave')
+  const s = await subir({ credenciaisDir: vazio, ageRecipient: null })
+  try {
+    const r = await fetch(`${s.url}/api/credentials/ABC_DEF`, { method: 'PUT', body: JSON.stringify({ value: 'x' }) })
+    assert.equal(r.status, 503)
+    assert.throws(() => readdirSync(vazio))
+  } finally { await s.fechar() }
+})
+
+test('PUT sem credencial de acesso: 401 e nada gravado', async () => {
+  process.env.CONSOLE_USER = 'u'; process.env.CONSOLE_PASSWORD = 'p'
+  const dir = join(tmp, 'auth')
+  const s = await subir({ credenciaisDir: dir, ageRecipient: publica })
+  delete process.env.CONSOLE_USER; delete process.env.CONSOLE_PASSWORD
+  try {
+    const r = await fetch(`${s.url}/api/credentials/ABC_DEF`, { method: 'PUT', body: JSON.stringify({ value: 'x' }) })
+    assert.equal(r.status, 401)
+    const ok = await fetch(`${s.url}/api/credentials/ABC_DEF`, { method: 'PUT', body: JSON.stringify({ value: 'x' }), headers: { authorization: 'Basic ' + Buffer.from('u:p').toString('base64') } })
+    assert.equal(ok.status, 200)
+    assert.deepEqual(readdirSync(dir), ['ABC_DEF.age'])
+  } finally { await s.fechar() }
+})
+
+test('corpo gigante no PUT: 413 e nada gravado', async () => {
+  const dir = join(tmp, 'grande')
+  const s = await subir({ credenciaisDir: dir, ageRecipient: publica })
+  try {
+    const r = await fetch(`${s.url}/api/credentials/ABC_DEF`, { method: 'PUT', body: JSON.stringify({ value: 'x'.repeat(5_000_000) }) })
+    assert.equal(r.status, 413)
+    assert.throws(() => readdirSync(dir))
+  } finally { await s.fechar() }
+})
+
+test('valor medido em bytes: 40 mil caracteres de 2 bytes (80 KB) são recusados', async () => {
+  assert.equal((await salvar('OK_NOME', 'é'.repeat(40_000))).status, 422)
+})
+
+test('path traversal no nome da chave não escreve fora do diretório', async () => {
+  for (const nome of ['..%2F..%2Fescapou', '..%2Fx', 'A%2FB_C', 'ABC%00DEF', '%2E%2E']) {
+    const r = await fetch(`${base}/api/credentials/${nome}`, { method: 'PUT', body: JSON.stringify({ value: 'x' }) })
+    assert.ok([404, 422].includes(r.status), `${nome} -> ${r.status}`)
+  }
+  assert.deepEqual(readdirSync(dirAge), ['CENVIA_PROD_LOGIN.age'])
+  assert.deepEqual(readdirSync(tmp).filter((n) => n.includes('escapou')), [])
 })
 
 test('status publicado pelo DEUS (credenciais.json) vale quando não há .age pendente', () => {

@@ -1,6 +1,6 @@
 /**
  * Cofre de credenciais de TESTE (CARD-202): o console recebe o valor UMA vez, criptografa com a chave PÚBLICA age
- * do DEUS (`estado-publico/age-recipient.txt`) e grava só o `.age` no volume privado. Não existe caminho de leitura:
+ * do DEUS (env `DEUS_AGE_RECIPIENT`) e grava só o `.age` no volume privado. Não existe caminho de leitura:
  * a API devolve nome + status, nunca valor. Quem decripta é o DEUS (`deus cred sync`), que depois apaga o `.age`.
  *
  * Criptografa chamando o binário `age` (o mesmo que o DEUS usa para decriptar) em vez de reimplementar o formato:
@@ -54,21 +54,19 @@ function lerStatusPublicado(raizPublica) {
   }
 }
 
-export function lerDestinatario(raizPublica) {
-  try {
-    const r = readFileSync(join(raizPublica, 'estado-publico', 'age-recipient.txt'), 'utf8').trim()
-    return /^age1[0-9a-z]{50,}$/.test(r) ? r : null
-  } catch {
-    return null
-  }
+/** O destinatário vem SÓ do ambiente do container (`DEUS_AGE_RECIPIENT`, definido no Coolify): quem escreve no repo
+ *  git não pode trocar a chave para a qual as credenciais são criptografadas. Inválido ou ausente = null (503). */
+export function destinatarioDoAmbiente(env = process.env) {
+  const r = String(env.DEUS_AGE_RECIPIENT ?? '').trim()
+  return /^age1[0-9a-z]{50,}$/.test(r) ? r : null
 }
 
 /** Criptografa `valor` para `destinatario` e grava `<dirAge>/<nome>.age` (0600, atômico). Nunca devolve o valor. */
 export function salvarCredencial({ dirAge, destinatario, nome, valor, ageBin = 'age' }) {
   if (!RE_CHAVE.test(nome ?? '')) return { ok: false, codigo: 422, erro: 'nome de chave inválido' }
   if (typeof valor !== 'string' || valor.length === 0) return { ok: false, codigo: 422, erro: 'valor obrigatório' }
-  if (valor.length > LIMITE_VALOR) return { ok: false, codigo: 422, erro: 'valor acima de 64 KB' }
-  if (!destinatario) return { ok: false, codigo: 503, erro: 'chave pública do DEUS indisponível (age-recipient.txt)' }
+  if (Buffer.byteLength(valor, 'utf8') > LIMITE_VALOR) return { ok: false, codigo: 422, erro: 'valor acima de 64 KB' }
+  if (!destinatario) return { ok: false, codigo: 503, erro: 'chave pública do DEUS indisponível (DEUS_AGE_RECIPIENT ausente no container)' }
 
   const r = spawnSync(ageBin, ['-r', destinatario], { input: valor, maxBuffer: 4 * LIMITE_VALOR })
   if (r.status !== 0 || !r.stdout?.length) return { ok: false, codigo: 500, erro: 'falha ao criptografar' }
