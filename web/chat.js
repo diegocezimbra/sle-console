@@ -1,4 +1,5 @@
 import { renderMarkdown } from './chat-md.js'
+import { insertIndex, sinceWithLookback, splitLate } from './chat-order.js'
 
 const $ = (id) => document.getElementById(id)
 const thread = $('thread')
@@ -9,7 +10,10 @@ const aviso = (texto) => {
   thread.replaceChildren(p)
 }
 const AUTOR = { diego: 'Diego', deus: 'DEUS' }
-const POLL_MS = 8000
+// Mensagem espelhada da conversa da sessao DEUS (VS Code), nao digitada aqui nem enviada por `deus chat enviar`.
+const ORIGEM = { sessao: 'VS Code' }
+// `?poll=<ms>` (250 a 60000) so existe para o teste de interface nao esperar 8 s.
+const POLL_MS = Math.min(Math.max(Number(new URLSearchParams(location.search).get('poll')) || 8000, 250), 60_000)
 let ultimoTs = ''
 let proximo = null
 let carregandoAntigas = false
@@ -20,38 +24,72 @@ const fmtDia = (ts) => new Date(ts).toLocaleDateString('pt-BR', { weekday: 'long
 const fmtHora = (ts) => new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 const chaveDia = (ts) => new Date(ts).toLocaleDateString('sv-SE')
 
+function cabecalhoDia(ts) {
+  const d = document.createElement('div')
+  d.className = 'dia'
+  d.dataset.dia = chaveDia(ts)
+  d.textContent = fmtDia(ts)
+  return d
+}
+
+function balao(m, destaque = false) {
+  const el = document.createElement('article')
+  el.className = `msg ${m.de}${destaque ? ' achada' : ''}`
+  el.dataset.id = m.id
+  el.dataset.ts = m.ts
+  // Cabecalho por DOM/textContent (dado do jsonl nunca vira HTML); so o corpo passa por
+  // renderMarkdown, que escapa tudo antes de reintroduzir marcas.
+  const meta = document.createElement('div')
+  meta.className = 'meta'
+  const autor = document.createElement('span')
+  autor.textContent = AUTOR[m.de] ?? '?'
+  const hora = document.createElement('time')
+  hora.dateTime = String(m.ts)
+  hora.textContent = fmtHora(m.ts)
+  meta.append(autor, hora)
+  if (ORIGEM[m.origem]) {
+    const via = document.createElement('span')
+    via.className = 'via'
+    via.textContent = `via ${ORIGEM[m.origem]}`
+    meta.append(via)
+  }
+  const corpo = document.createElement('div')
+  corpo.className = 'corpo'
+  corpo.innerHTML = renderMarkdown(m.texto)
+  el.append(meta, corpo)
+  return el
+}
+
 function baloes(msgs, { destaque = false, dia = null } = {}) {
   const frag = document.createDocumentFragment()
   for (const m of msgs) {
     if (chaveDia(m.ts) !== dia) {
       dia = chaveDia(m.ts)
-      const d = document.createElement('div')
-      d.className = 'dia'
-      d.dataset.dia = dia
-      d.textContent = fmtDia(m.ts)
-      frag.append(d)
+      frag.append(cabecalhoDia(m.ts))
     }
-    const el = document.createElement('article')
-    el.className = `msg ${m.de}${destaque ? ' achada' : ''}`
-    el.dataset.id = m.id
-    el.dataset.ts = m.ts
-    // Cabecalho por DOM/textContent (dado do jsonl nunca vira HTML); so o corpo passa por
-    // renderMarkdown, que escapa tudo antes de reintroduzir marcas.
-    const meta = document.createElement('div')
-    meta.className = 'meta'
-    const autor = document.createElement('span')
-    autor.textContent = AUTOR[m.de] ?? '?'
-    const hora = document.createElement('time')
-    hora.dateTime = String(m.ts)
-    hora.textContent = fmtHora(m.ts)
-    meta.append(autor, hora)
-    const corpo = document.createElement('div')
-    corpo.className = 'corpo'
-    corpo.innerHTML = renderMarkdown(m.texto)
-    el.append(meta, corpo)
-    frag.append(el)
+    frag.append(balao(m, destaque))
   }
   return frag
+}
+
+/** Retardatario (o espelho publicou depois): entra no lugar do ts, nao no fim. */
+function inserirNoLugar(m) {
+  const todas = [...thread.querySelectorAll('.msg')]
+  const i = insertIndex(todas.map((el) => el.dataset.ts), m.ts)
+  const el = balao(m)
+  if (i < todas.length) todas[i].before(el)
+  else thread.append(el)
+}
+
+/** Cabecalhos de dia sempre batem com as mensagens depois de uma insercao no meio. */
+function refazerDias() {
+  thread.querySelectorAll('.dia').forEach((d) => d.remove())
+  let dia = null
+  for (const el of thread.querySelectorAll('.msg')) {
+    if (chaveDia(el.dataset.ts) === dia) continue
+    dia = chaveDia(el.dataset.ts)
+    el.before(cabecalhoDia(el.dataset.ts))
+  }
 }
 
 async function api(caminho, opcoes) {
@@ -96,14 +134,20 @@ async function carregarAntigas() {
 async function buscarNovas() {
   if (modoBusca || !ultimoTs) return
   try {
-    const { mensagens } = await api(`/api/chat?desde=${encodeURIComponent(ultimoTs)}`)
+    // Recuo de alguns minutos: o espelho publica retardatario com o ts de quando a frase foi dita.
+    const { mensagens } = await api(`/api/chat?desde=${encodeURIComponent(sinceWithLookback(ultimoTs))}`)
     const novas = mensagens.filter((m) => !vistos.has(m.id))
     if (!novas.length) return
     const seguir = noFim()
     thread.querySelector('.aviso')?.remove()
-    thread.append(baloes(novas, { dia: diaAtual() }))
+    const { tail, late } = splitLate(novas, ultimoTs)
+    late.forEach(inserirNoLugar)
+    if (late.length) refazerDias()
+    if (tail.length) {
+      thread.append(baloes(tail, { dia: diaAtual() }))
+      ultimoTs = tail.at(-1).ts
+    }
     novas.forEach((m) => vistos.add(m.id))
-    ultimoTs = novas.at(-1).ts
     if (seguir) rolarFim()
   } catch { /* proxima rodada tenta de novo */ }
 }

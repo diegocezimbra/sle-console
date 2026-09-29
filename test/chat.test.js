@@ -105,3 +105,38 @@ test('markdown: negrito, lista, link, bloco de codigo e nada de HTML cru', () =>
   assert.doesNotMatch(perigo, /href="javascript/)
   assert.doesNotMatch(renderMarkdown('`**nao**`'), /<strong>/)
 })
+
+// CARD-227: o espelho da sessao DEUS e o merge por uniao do git podem entregar linhas fora de ordem ou repetidas.
+test('messagesOfDay ordena por ts e descarta id repetido (uniao do git embaralha e repete linha)', () => {
+  const r = raiz()
+  const tarde = m('2026-09-29T10:05:00Z', 'deus', 'tarde')
+  em(r, '2026-09-29', [tarde, m('2026-09-29T10:00:00Z', 'diego', 'cedo'), tarde, m('2026-09-29T10:02:00Z', 'deus', 'meio')])
+  assert.deepEqual(messagesOfDay(r, '2026-09-29').map((x) => x.texto), ['cedo', 'meio', 'tarde'])
+})
+
+test('mesmo ts com ids diferentes mantem as duas mensagens em ordem estavel', () => {
+  const r = raiz()
+  em(r, '2026-09-29', [
+    { ts: '2026-09-29T10:00:00Z', de: 'diego', texto: 'a', id: 'b-2' },
+    { ts: '2026-09-29T10:00:00Z', de: 'deus', texto: 'b', id: 'a-1' },
+  ])
+  assert.deepEqual(messagesOfDay(r, '2026-09-29').map((x) => x.id), ['a-1', 'b-2'])
+})
+
+test('marcador de merge no meio do jsonl nao derruba as linhas validas dos dois lados', () => {
+  const r = raiz()
+  mkdirSync(join(r, 'chat'))
+  writeFileSync(join(r, 'chat', '2026-09-29.jsonl'), [
+    JSON.stringify(m('2026-09-29T10:00:00Z', 'diego', 'antes')), '<<<<<<< HEAD',
+    JSON.stringify(m('2026-09-29T10:02:00Z', 'deus', 'lado-a')), '=======',
+    JSON.stringify(m('2026-09-29T10:01:00Z', 'diego', 'lado-b')), '>>>>>>> origin/main',
+  ].join('\n') + '\n')
+  assert.deepEqual(messagesOfDay(r, '2026-09-29').map((x) => x.texto), ['antes', 'lado-b', 'lado-a'])
+})
+
+test('origem "sessao" (espelho do VS Code) chega intacta ao cliente', () => {
+  const r = raiz()
+  em(r, '2026-09-29', [{ ...m('2026-09-29T10:00:00Z', 'diego', 'do vscode'), origem: 'sessao' }])
+  assert.equal(messagesOfDay(r, '2026-09-29')[0].origem, 'sessao')
+  assert.equal(page(r).mensagens[0].origem, 'sessao')
+})

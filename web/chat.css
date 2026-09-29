@@ -13,6 +13,7 @@ h1{font-size:14px;margin:0;letter-spacing:.1em}
 .msg.diego{align-self:flex-end;background:var(--diego)}
 .msg.deus{align-self:flex-start}
 .meta{font-size:11px;color:var(--fraco);margin-bottom:2px;display:flex;gap:8px}
+.meta .via{font-style:italic;opacity:.85}
 .msg p{margin:0}.msg p+p,.msg p+ul,.msg ul+p,.msg pre+p,.msg p+pre{margin-top:6px}
 .msg ul,.msg ol{margin:4px 0;padding-left:20px}
 .msg code{font:13px ui-monospace,Menlo,Consolas,monospace;background:#0006;padding:1px 4px;border-radius:4px}

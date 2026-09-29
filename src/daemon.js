@@ -56,6 +56,7 @@ const ESTATICOS = {
   '/chat': ['chat.html', 'text/html; charset=utf-8'],
   '/chat.js': ['chat.js', 'text/javascript; charset=utf-8'],
   '/chat-md.js': ['chat-md.js', 'text/javascript; charset=utf-8'],
+  '/chat-order.js': ['chat-order.js', 'text/javascript; charset=utf-8'],
   '/chat.css': ['chat.css', 'text/css; charset=utf-8'],
 }
 

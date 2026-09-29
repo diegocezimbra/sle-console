@@ -46,7 +46,29 @@ export function listDays(root) {
     .reverse()
 }
 
-/** Linha corrompida e ignorada: um jsonl com meia linha nao pode derrubar a tela. */
+/**
+ * Ordem cronologica (ts, depois id) e sem id repetido: o merge por uniao do git
+ * (`merge=union` em chat/*.jsonl) junta as linhas dos dois lados sem garantir a
+ * ordem, e o espelho da sessao DEUS publica retardatario com o ts de quando a
+ * frase foi dita. O arquivo e append-only; quem le ordena.
+ */
+function chronological(mensagens) {
+  const vistos = new Set()
+  const unicas = mensagens.filter((m) => {
+    if (m.id === undefined) return true
+    if (vistos.has(m.id)) return false
+    vistos.add(m.id)
+    return true
+  })
+  const chave = (m) => `${m.ts}\u0000${m.id ?? ''}`
+  return unicas.sort((a, b) => (chave(a) < chave(b) ? -1 : chave(a) > chave(b) ? 1 : 0))
+}
+
+/**
+ * Linha corrompida e ignorada (meia linha, marcador de merge `<<<<<<<`): um
+ * jsonl nao pode derrubar a tela, e as linhas validas dos dois lados de um
+ * conflito continuam aparecendo.
+ */
 export function messagesOfDay(root, dia) {
   let bruto
   try {
@@ -64,7 +86,7 @@ export function messagesOfDay(root, dia) {
       /* ignora */
     }
   }
-  return saida
+  return chronological(saida)
 }
 
 /**

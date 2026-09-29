@@ -70,7 +70,7 @@ test('busca e desde funcionam pela API', async () => {
 })
 
 test('/chat serve a pagina e os assets', async () => {
-  for (const [rota, tipo] of [['/chat', 'text/html'], ['/chat.js', 'javascript'], ['/chat.css', 'text/css'], ['/chat-md.js', 'javascript']]) {
+  for (const [rota, tipo] of [['/chat', 'text/html'], ['/chat.js', 'javascript'], ['/chat.css', 'text/css'], ['/chat-md.js', 'javascript'], ['/chat-order.js', 'javascript']]) {
     const r = await fetch(`${s.base}${rota}`)
     assert.equal(r.status, 200, rota)
     assert.match(r.headers.get('content-type'), new RegExp(tipo))
