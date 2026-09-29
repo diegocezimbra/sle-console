@@ -26,6 +26,7 @@ import { calcularMetricas } from './metricas.js'
 import { montarHistorico } from './historico.js'
 import { extrairMedidas } from './otel.js'
 import { COLUNAS, lerCard } from './cards.js'
+import { criarRotasChat } from './chatRotas.js'
 import { descobrirProjetos, invalidarCache, resolverProjeto } from './projetos.js'
 import {
   agentesDeTodos,
@@ -50,6 +51,10 @@ const ESTATICOS = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
   '/style.css': ['style.css', 'text/css; charset=utf-8'],
+  '/chat': ['chat.html', 'text/html; charset=utf-8'],
+  '/chat.js': ['chat.js', 'text/javascript; charset=utf-8'],
+  '/chat-md.js': ['chat-md.js', 'text/javascript; charset=utf-8'],
+  '/chat.css': ['chat.css', 'text/css; charset=utf-8'],
 }
 
 /**
@@ -320,6 +325,7 @@ export function criarDaemon({
       })
     }
 
+    if (rotasChat(req, res, rota)) return
     if (req.method === 'POST' && rota === '/api/hook') return ingerir(req, res)
     if (req.method === 'PUT' && rota === '/api/file') {
       // Escrever exige saber em qual projeto: a visão de todos é só leitura.
@@ -533,6 +539,12 @@ export function criarDaemon({
   }
 
   const raizDeus = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
+  // Chat do Diego (CARD-208): `chat/` no clone em modo git; no checkout do 00-DEUS no console local.
+  const rotasChat = criarRotasChat({
+    raiz: process.env.CONSOLE_CHAT_DIR || (git ? git.dataDir : raizDeus),
+    git,
+    registrar,
+  })
 
   /** Precedência: `CONSOLE_STATE_DIR` (env) → em modo git, `<clone>/estado`
    *  (dentro do `dataDir` que o próprio processo já sabe escrever) → senão

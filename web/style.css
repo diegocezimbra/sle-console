@@ -274,3 +274,4 @@ color:var(--l2);font-size:11px;line-height:1.6}
   .modal-resposta{padding-left:16px;padding-right:16px}
   .modal-acoes{flex-wrap:wrap;justify-content:flex-end}
 }
+nav .link-chat{color:var(--fraco);text-decoration:none;padding:3px 10px;border-radius:4px}nav .link-chat:hover{color:var(--texto)}
