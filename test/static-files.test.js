@@ -21,7 +21,7 @@ before(async () => {
   put('mobile/shell.js', 'export const s = 1')
   put('mobile/mobile.css', 'body{}')
   put('manifest.json', '{"name":"x"}')
-  put('sw.js', "const BUILD = '__BUILD__'")
+  put('sw.js', "const BUILD = '__BUILD__'\nconst ASSETS = __ASSETS__")
   put('icons/icon-192.png', Buffer.from([0x89, 0x50, 0x4e, 0x47]))
   put('.escondido', 'nao serve')
   put('LEIAME.md', 'nao serve')
@@ -93,6 +93,14 @@ test('sw.js leva o id da versao no lugar do marcador e o id muda quando qualquer
   utimesSync(join(web, 'mobile/mobile.css'), new Date(), new Date(Date.now() + 9000))
   const b = await (await fetch(`${base}/sw.js`)).text()
   assert.notEqual(/BUILD = '([^']+)'/.exec(b)?.[1], id)
+})
+
+test('sw.js recebe a lista do pre-cache: paginas, css, js do celular e icones; sem o app.js do desktop nem ele mesmo', async () => {
+  const text = await (await fetch(`${base}/sw.js`)).text()
+  const list = JSON.parse(/const ASSETS = (\[.*\])/.exec(text)[1])
+  for (const url of ['/', '/chat', '/mobile/shell.js', '/mobile/mobile.css', '/icons/icon-192.png', '/manifest.json']) assert.ok(list.includes(url), url)
+  assert.ok(!list.includes('/sw.js') && !list.includes('/app.js'))
+  assert.doesNotMatch(text, /__ASSETS__/)
 })
 
 test('icones podem ficar em cache do navegador; o resto revalida sempre', async () => {

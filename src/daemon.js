@@ -29,6 +29,7 @@ import { extrairMedidas } from './otel.js'
 import { COLUNAS, lerCard } from './cards.js'
 import { createChatRoutes } from './chat-routes.js'
 import { createMobileRoutes } from './mobile-routes.js'
+import { createPushRoutes } from './push-routes.js'
 import { extractQuestion, parseNotes } from './question.js'
 import { createStaticFiles } from './static-files.js'
 import { descobrirProjetos, invalidarCache, resolverProjeto } from './projetos.js'
@@ -80,6 +81,7 @@ export function criarDaemon({
   const autorizar = createAuthMiddleware()
   const arquivosEstaticos = createStaticFiles({ webDir: WEB })
   const rotasMobile = createMobileRoutes()
+  const rotasPush = createPushRoutes({ dados })
   const pullLoop = git
     ? startPullLoop({
         dataDir: git.dataDir,
@@ -296,6 +298,7 @@ export function criarDaemon({
     // mesmo index.html — sem isso Ctrl+clique/nova guia/F5 caem num 404) e a API enxuta do celular.
     if (arquivosEstaticos.handle(req, res, rota)) return
     if (rotasMobile(req, res, rota, indice)) return
+    if (rotasPush(req, res, rota)) return
 
     // CARD-202: cofre de credenciais de teste. A API só devolve NOME + STATUS; o valor entra por PUT, é criptografado
     // com a chave pública do DEUS e nunca mais sai daqui (o DEUS puxa o `.age` por SSH e apaga).

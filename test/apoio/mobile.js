@@ -29,17 +29,27 @@ export async function subirCelular({ projeto, chat = [], largura = 390, altura =
   process.env.CONSOLE_CHAT_DIR = chatDir
   process.env.CONSOLE_STATE_DIR = mkdtempSync(join(tmpdir(), 'sle-mstate-'))
 
-  const d = criarDaemon({ dados: mkdtempSync(join(tmpdir(), 'sle-mbd-')), projeto })
+  const dados = mkdtempSync(join(tmpdir(), 'sle-mbd-'))
+  const d = criarDaemon({ dados, projeto })
   await new Promise((r) => d.servidor.listen(0, '127.0.0.1', r))
   const base = `http://127.0.0.1:${d.servidor.address().port}`
   const browser = await abrirBrowser()
   await browser.celular(largura, altura)
+  let stopped = false
+  const stopServer = () => {
+    if (stopped) return Promise.resolve()
+    stopped = true
+    return new Promise((r) => (d.observador.parar(), d.servidor.closeAllConnections(), d.servidor.close(r)))
+  }
   return {
     base,
     browser,
+    dados,
+    /** Derruba so o servidor (o Chrome fica): e assim que se testa o modo sem rede. */
+    pararServidor: stopServer,
     async fechar() {
       await browser?.fechar()
-      await new Promise((r) => (d.observador.parar(), d.servidor.closeAllConnections(), d.servidor.close(r)))
+      await stopServer()
       for (const k of ENV_KEYS) {
         if (anterior[k] === undefined) delete process.env[k]
         else process.env[k] = anterior[k]

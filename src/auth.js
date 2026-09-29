@@ -29,6 +29,16 @@ function constantTimeEqual(a, b) {
  * startup, so the check per request is cheap and the mode (on/off) is fixed
  * for the lifetime of the process.
  */
+/**
+ * Arquivos que o navegador busca SEM credencial: o manifesto (`<link rel=manifest>` usa credentials=omit),
+ * o service worker e os icones (o iOS busca o apple-touch-icon sozinho). Sao estaticos, sem dado nenhum.
+ */
+const PUBLIC_PATHS = new Set(['/manifest.json', '/sw.js'])
+const isPublic = (url) => {
+  const path = String(url ?? '').split('?')[0]
+  return PUBLIC_PATHS.has(path) || (path.startsWith('/icons/') && !path.includes('..'))
+}
+
 export function createAuthMiddleware(env = process.env) {
   const user = env.CONSOLE_USER
   const password = env.CONSOLE_PASSWORD
@@ -39,7 +49,7 @@ export function createAuthMiddleware(env = process.env) {
    * proceed. Returns `false` after already writing a 401 response.
    */
   return function authorize(req, res) {
-    if (!enabled) return true
+    if (!enabled || isPublic(req.url)) return true
 
     const header = req.headers.authorization ?? ''
     const [scheme, encoded] = header.split(' ')

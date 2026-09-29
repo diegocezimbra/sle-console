@@ -48,6 +48,12 @@ export function createStaticFiles({ webDir }) {
     routes.set(`/${rel}`, rel)
   }
 
+  /** O que o service worker guarda para abrir sem rede: paginas, css, js e icones; nao o app.js do desktop nem o proprio sw.js. */
+  function precacheList() {
+    const skip = new Set(['/sw.js', '/app.js', '/icons/icon.svg'])
+    return ['/', '/chat', ...[...routes.keys()].filter((route) => !skip.has(route))].sort()
+  }
+
   /** Muda quando qualquer arquivo de `web/` muda: e o que faz o service worker se atualizar. */
   function buildId() {
     const parts = [...routes.values(), ...Object.values(PAGE_ALIASES)].sort().map((rel) => {
@@ -71,7 +77,7 @@ export function createStaticFiles({ webDir }) {
     let etag = `W/"${stat.size.toString(16)}-${Math.round(stat.mtimeMs).toString(16)}"`
     if (rel === 'sw.js') {
       const id = buildId()
-      body = Buffer.from(body.toString('utf8').replaceAll('__BUILD__', id))
+      body = Buffer.from(body.toString('utf8').replaceAll('__BUILD__', id).replaceAll('__ASSETS__', JSON.stringify(precacheList())))
       etag = `W/"sw-${id}"`
     }
     const headers = {

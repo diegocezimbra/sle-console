@@ -1,7 +1,9 @@
 // Shell do celular (CARD-094): barra de abas no rodape + uma tela por vez, e o card em tela cheia
 // por cima de tudo. Roda no lugar do app.js quando a tela e pequena (o script do index.html decide).
 import { countUnreadChat } from './counters.js'
+import { formatWhen } from './dom.js'
 import { mountPending } from './pending.js'
+import { registerServiceWorker, showUpdateBanner } from './pwa.js'
 import { counts, refresh, startPolling, state, subscribe } from './store.js'
 import { mountTabs, TABS } from './tabbar.js'
 
@@ -45,7 +47,22 @@ const setActions = (node) => $('m-top-actions').replaceChildren(...(node ? [node
 
 function updateBadges() {
   tabs.setBadges({ ...counts(), chat: chatUnread })
-  $('m-offline').hidden = !state.offline
+  const offline = $('m-offline')
+  offline.hidden = !state.offline
+  offline.textContent = `Sem conexão: mostrando o último estado${state.cachedAt ? ` (${formatWhen(state.cachedAt)})` : ''}.`
+}
+
+/** Service worker: cache para abrir sem rede e push. Sem ele o app funciona igual, so nao abre offline. */
+registerServiceWorker({ onUpdate: showUpdateBanner })
+
+/** O botao "Avisos" so aparece onde o aparelho suporta push, e depois que o service worker esta ativo. */
+async function addNotificationButton(token) {
+  if (!('serviceWorker' in navigator)) return
+  const registration = await Promise.race([navigator.serviceWorker.ready, new Promise((resolve) => setTimeout(() => resolve(null), 4000))])
+  if (!registration || token !== showToken) return
+  const { notificationButton } = await import('./notifications.js')
+  const button = await notificationButton({ registration, toast })
+  if (button && token === showToken) setActions(button)
 }
 
 // ── Card em tela cheia ─────────────────────────────────────────────────────
@@ -111,6 +128,7 @@ async function show(id) {
   const mount = await screen.load()
   if (token !== showToken) return // outra aba abriu enquanto o codigo baixava
   current = { id, destroy: mount(root, { toast, setActions, openCard })?.destroy }
+  if (id === 'pending') addNotificationButton(token)
 }
 
 function navigate(path) {

@@ -72,3 +72,19 @@ test('createAuthMiddleware compara em tempo constante mesmo com tamanhos diferen
   assert.equal(ok, false)
   assert.equal(calls[0][1], 401)
 })
+
+// CARD-094: o navegador busca manifesto, service worker e icones SEM credencial (o <link rel=manifest> usa
+// credentials=omit; o iOS busca o apple-touch-icon sozinho). Sao arquivos estaticos sem dado nenhum.
+test('manifest, service worker e icones sao publicos; o resto continua atras da senha', async () => {
+  const { base, fechar } = await subir({ CONSOLE_USER: 'deus', CONSOLE_PASSWORD: 'segredo' })
+  try {
+    for (const rota of ['/manifest.json', '/sw.js', '/icons/icon-192.png', '/icons/apple-touch-icon.png']) {
+      assert.equal((await fetch(base + rota)).status, 200, rota)
+    }
+    for (const rota of ['/', '/chat', '/app.js', '/mobile/shell.js', '/api/cards', '/api/push/key', '/icons/../app.js']) {
+      assert.equal((await fetch(base + rota)).status, 401, rota)
+    }
+  } finally {
+    await fechar()
+  }
+})

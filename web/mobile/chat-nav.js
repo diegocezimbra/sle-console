@@ -2,6 +2,7 @@
 // das outras abas, "visto" das mensagens (zera o contador do Chat) e a pagina acompanhando a area
 // visivel quando o teclado abre. Em tela grande nao faz nada: o desktop nao tem barra de abas.
 import { fetchCardCounts, markChatSeen } from './counters.js'
+import { registerServiceWorker, showUpdateBanner } from './pwa.js'
 import { mountTabs } from './tabbar.js'
 import { fitToVisualViewport } from './viewport.js'
 
@@ -9,6 +10,7 @@ const CARD_POLL_MS = 30_000
 const MOBILE = matchMedia('(max-width: 767px), (pointer: coarse) and (max-height: 500px)')
 
 function start() {
+  registerServiceWorker({ onUpdate: showUpdateBanner })
   // No celular o Enter do teclado envia e nao ha Shift+Enter: a dica do desktop so atrapalha (e quebra em 2 linhas).
   document.getElementById('texto').placeholder = 'Mensagem para o DEUS'
   const nav = document.getElementById('m-tabs')

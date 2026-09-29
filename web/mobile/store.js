@@ -5,7 +5,7 @@ import { CARDS_SUMMARY_PATH, withAllProjects } from './api.js'
 
 const POLL_MS = 20_000
 
-export const state = { board: {}, total: 0, loaded: false, offline: false }
+export const state = { board: {}, total: 0, loaded: false, offline: false, cachedAt: null }
 const listeners = new Set()
 let lastText = ''
 let inflight = null
@@ -36,10 +36,12 @@ async function load() {
     const response = (await takePrefetched()) ?? (await fetch(withAllProjects(CARDS_SUMMARY_PATH)))
     if (!response.ok) throw new Error(`erro ${response.status}`)
     const text = await response.text()
-    if (text === lastText && state.loaded && !state.offline) return
+    // O service worker devolve o ultimo estado bom quando a rede cai e marca a resposta com x-sle-offline.
+    const fromCache = response.headers.get('x-sle-offline') === '1'
+    if (text === lastText && state.loaded && state.offline === fromCache) return
     lastText = text
     const data = JSON.parse(text)
-    Object.assign(state, { board: data.board ?? {}, total: data.total ?? 0, loaded: true, offline: false })
+    Object.assign(state, { board: data.board ?? {}, total: data.total ?? 0, loaded: true, offline: fromCache, cachedAt: fromCache ? response.headers.get('x-sle-cached-at') : null })
   } catch {
     state.offline = true
   }
