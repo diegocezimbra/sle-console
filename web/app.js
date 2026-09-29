@@ -1,4 +1,5 @@
 // Tela da Fase 2: observar e ler. Nada aqui escreve no daemon.
+import { pintarCredenciais } from '/credenciais.js'
 const CORES = { L1: '#4aa3df', L2: '#c08b3e', L3: '#7b5ec7' }
 const COLUNAS = ['backlog', 'pendente-diego', 'refinamento', 'aprovado', 'doing', 'review', 'done', 'recurring']
 // Só a coluna de decisão do Diego precisa de rótulo -- as demais já se leem pelo próprio id.
@@ -583,6 +584,7 @@ async function abrirCard(id) {
   $('modal-meta').replaceChildren(...chips)
 
   $('modal-corpo').innerHTML = markdownSeguro(c.corpo ?? '')
+  pintarCredenciais(c.id, $('modal-credenciais'), comProjeto)
   pintarRespostas(c)
   pintarSeletorOpcoes(c)
   $('modal-resolver').hidden = c.coluna !== 'pendente-diego'

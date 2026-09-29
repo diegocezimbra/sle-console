@@ -5,8 +5,9 @@ FROM node:22-alpine
 
 # git: clone/pull/commit/push do modo CONSOLE_MODE=git.
 # openssh-client: a deploy key fala com o GitHub por ssh, não https.
+# age: criptografa as credenciais de teste com a chave pública do DEUS (CARD-202).
 # curl: só pro HEALTHCHECK -- alpine não traz nenhum dos dois por padrão.
-RUN apk add --no-cache git openssh-client curl
+RUN apk add --no-cache git openssh-client curl age
 
 WORKDIR /app
 
