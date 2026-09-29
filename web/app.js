@@ -1,9 +1,9 @@
 // Tela da Fase 2: observar e ler. Nada aqui escreve no daemon.
-import { pintarCredenciais } from '/credenciais.js'
+import { pintarCredenciais as pintarFormularioCredenciais } from '/credenciais.js'
 const CORES = { L1: '#4aa3df', L2: '#c08b3e', L3: '#7b5ec7' }
-const COLUNAS = ['backlog', 'pendente-diego', 'refinamento', 'aprovado', 'doing', 'review', 'done', 'recurring']
+const COLUNAS = ['backlog', 'pendente-diego', 'refinamento', 'aprovado', 'doing', 'review', 'testando', 'done', 'recurring']
 // Só a coluna de decisão do Diego precisa de rótulo -- as demais já se leem pelo próprio id.
-const ROTULOS = { 'pendente-diego': 'Pendentes do Diego' }
+const ROTULOS = { 'pendente-diego': 'Pendentes do Diego', testando: 'Testando' }
 const eventos = []
 // IDs das sessões ativas na última pintura -- a régua usa pra saber que
 // traço é de trabalho de agora e que traço é eco de sessão parada. Precisa
@@ -11,6 +11,13 @@ const eventos = []
 // inicial chama `pintarRegua()`, que lê esta variável, antes do resto do
 // arquivo terminar de rodar -- `let` mais abaixo ainda estaria em TDZ.
 let sessoesAtivasIds = new Set()
+// Estado do modal do card. Fica aqui em cima pelo mesmo motivo acima: o load direto em
+// /card/<id> chama abrirCard() antes do resto do arquivo rodar (`let` abaixo = TDZ).
+let cardAberto = null
+// De onde o modal foi aberto -- pra onde o ✕ volta (aba e ?projeto= de onde o card foi clicado).
+let origemModal = null
+// Quem tinha o foco antes do modal (o card clicado): recebe o foco de volta ao fechar.
+let focusBeforeModal = null
 let indice = { board: {}, cards: [] }
 // Filtro de prioridade do board (CARD-120). Conjunto vazio == "todas" --
 // nunca esconde nada; marcar um ou mais P's é escolha explícita de quem olha.
@@ -492,10 +499,6 @@ function chip(texto) {
   return campo('chip', texto)
 }
 
-let cardAberto = null
-// De onde o modal foi aberto -- pra onde o ✕ volta. Sem isto, fechar sempre
-// caía em "/" em vez da aba (e do ?projeto=) de onde o card foi clicado.
-let origemModal = null
 
 function capturarOrigemDoModal() {
   if (!location.pathname.startsWith('/card/')) {
@@ -506,8 +509,6 @@ function capturarOrigemDoModal() {
   }
 }
 
-// Quem tinha o foco antes do modal (o card clicado): recebe o foco de volta ao fechar.
-let focusBeforeModal = null
 
 const FOCUSABLE_SELECTOR = 'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])'
 
@@ -583,12 +584,37 @@ async function abrirCard(id) {
   if (c.modelo) chips.push(chip(c.modelo))
   $('modal-meta').replaceChildren(...chips)
 
-  $('modal-corpo').innerHTML = markdownSeguro(c.corpo ?? '')
-  pintarCredenciais(c.id, $('modal-credenciais'), comProjeto)
+  $('modal-corpo').innerHTML = markdownSeguro(semSecaoDeCredenciais(c.corpo ?? ''))
+  pintarCredenciais(c)
+  pintarFormularioCredenciais(c.id, $('modal-cred-form'), comProjeto)
   pintarRespostas(c)
   pintarSeletorOpcoes(c)
   $('modal-resolver').hidden = c.coluna !== 'pendente-diego'
   showModal()
+}
+
+/** A seção "Credenciais necessárias" NUNCA é renderizada como texto livre (alguém pode ter colado um valor):
+ *  o painel dedicado abaixo mostra só nome + status. */
+function semSecaoDeCredenciais(corpo) {
+  return corpo.replace(/^## Credenciais necessárias[^\n]*\n[\s\S]*?(?=^## |(?![\s\S]))/m, '')
+}
+
+/** Credenciais de teste do card: só NOME e status (o valor nunca chega ao console). */
+function pintarCredenciais(c) {
+  const alvo = $('modal-credenciais')
+  const lista = c.credenciais ?? []
+  alvo.hidden = lista.length === 0
+  const itens = lista.map((x) => {
+    const li = document.createElement('li')
+    li.dataset.status = x.status
+    li.append(campo('cred-chave', x.chave), campo('cred-status', x.status))
+    return li
+  })
+  const titulo = document.createElement('h4')
+  titulo.textContent = 'Credenciais necessárias'
+  const ul = document.createElement('ul')
+  ul.append(...itens)
+  alvo.replaceChildren(titulo, ul)
 }
 
 /** Card não achado ou rede falhou: o modal abre mesmo assim, com o ✕ vivo --
@@ -600,6 +626,8 @@ function erroDeCard(id) {
   $('modal-titulo').textContent = 'Não encontrado'
   $('modal-nova-guia').href = `/card/${encodeURIComponent(id)}`
   $('modal-meta').replaceChildren()
+  $('modal-credenciais').hidden = true
+  $('modal-cred-form').hidden = true
   $('modal-corpo').innerHTML = `<p>Não achei o card <b>${id}</b> em nenhum projeto observado.</p>`
   $('modal-respostas').replaceChildren()
   $('modal-resposta-opcoes').replaceChildren()

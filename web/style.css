@@ -38,6 +38,12 @@ margin:0 0 6px;display:flex;justify-content:space-between;gap:6px;padding-bottom
 border-bottom:1px solid var(--borda)}
 /* Destaque: decisão parada só se resolve com o Diego -- a coluna precisa saltar aos olhos. */
 .coluna[data-coluna="pendente-diego"]>h3{color:var(--l2);border-bottom-color:var(--l2)}
+/* Testando: teste funcional em producao -- cor propria, distinta de review e do destaque do Diego. */
+.coluna[data-coluna="testando"]>h3{color:var(--l3);border-bottom-color:var(--l3)}
+.modal-credenciais ul{list-style:none;margin:4px 0 12px;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.modal-credenciais li{border:1px solid var(--borda);border-radius:4px;padding:2px 8px;font-size:12px;display:flex;gap:8px}
+.modal-credenciais li[data-status="ausente"] .cred-status{color:var(--l2)}
+.modal-credenciais li[data-status="preenchida"] .cred-status{color:var(--l1)}
 .coluna>div{overflow:auto;display:flex;flex-direction:column;gap:8px}
 /* O card é um <a> por baixo (nova guia funciona sem JS), mas não pode SE LER
    como link: sem cor de link, sem sublinhado, texto no tom normal da tela. */
@@ -270,8 +276,8 @@ color:var(--l2);font-size:11px;line-height:1.6}
 }
 
 /* CARD-202: credenciais de teste no card */
-.modal-credenciais { margin: 12px 0; padding: 12px; border: 1px solid var(--borda, #333); border-radius: 8px; }
-.modal-credenciais h3 { margin: 0 0 8px; font-size: 14px; }
+.modal-cred-form { margin: 12px 0; padding: 12px; border: 1px solid var(--borda, #333); border-radius: 8px; }
+.modal-cred-form h3 { margin: 0 0 8px; font-size: 14px; }
 .cred-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .cred-linha { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .cred-status { font-size: 12px; opacity: 0.8; }

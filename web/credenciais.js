@@ -48,7 +48,7 @@ function linhaDaChave({ name, status }, aoSalvar) {
   return li
 }
 
-/** Preenche `#modal-credenciais` para o card aberto; sem seção de credenciais no card, esconde o bloco. */
+/** Preenche `#modal-cred-form` para o card aberto; sem seção de credenciais no card, esconde o bloco. */
 export async function pintarCredenciais(id, alvo, comProjeto = (u) => u) {
   alvo.hidden = true
   alvo.replaceChildren()
@@ -61,7 +61,7 @@ export async function pintarCredenciais(id, alvo, comProjeto = (u) => u) {
   }
   if (!lista.length) return
   const titulo = document.createElement('h3')
-  titulo.textContent = 'Credenciais necessárias'
+  titulo.textContent = 'Enviar credencial de teste'
   const ul = document.createElement('ul')
   ul.className = 'cred-lista'
   const recarregar = () => pintarCredenciais(id, alvo, comProjeto)

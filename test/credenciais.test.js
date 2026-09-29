@@ -148,6 +148,6 @@ test('status publicado pelo DEUS (credenciais.json) vale quando não há .age pe
 test('a tela serve o módulo do formulário e o card abre o bloco de credenciais', async () => {
   const js = await (await fetch(`${base}/credenciais.js`)).text()
   assert.match(js, /export async function pintarCredenciais/)
-  assert.match(await (await fetch(`${base}/app.js`)).text(), /pintarCredenciais\(c\.id/)
-  assert.match(await (await fetch(`${base}/`)).text(), /id="modal-credenciais"/)
+  assert.match(await (await fetch(`${base}/app.js`)).text(), /pintarFormularioCredenciais\(c\.id/)
+  assert.match(await (await fetch(`${base}/`)).text(), /id="modal-cred-form"/)
 })

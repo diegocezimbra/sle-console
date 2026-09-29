@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { lerCard, indexarCards } from '../src/cards.js'
+import { lerCard, indexarCards, extrairSecao, extrairCredenciais } from '../src/cards.js'
 
 const CARD = `---
 id: CARD-042
@@ -81,7 +81,7 @@ test('o indice acha os cards e sabe de que coluna cada um veio', () => {
 test('o board agrupa por coluna, na ordem do pipeline', () => {
   const i = indexarCards(arvore())
   assert.deepEqual(Object.keys(i.board), [
-    'backlog', 'refinamento', 'aprovado', 'doing', 'review', 'pendente-diego', 'done', 'recurring',
+    'backlog', 'pendente-diego', 'refinamento', 'aprovado', 'doing', 'review', 'testando', 'done', 'recurring',
   ])
   assert.equal(i.board.doing.length, 1)
   assert.equal(i.board.backlog[0].id, 'CARD-001')
@@ -101,4 +101,52 @@ test('status que discorda da pasta e reportado, nao escondido', () => {
 test('arvore sem pasta de cards devolve indice vazio em vez de estourar', () => {
   const i = indexarCards(mkdtempSync(join(tmpdir(), 'sle-vazio-')))
   assert.deepEqual(i.cards, [])
+})
+
+const CARD_TESTE = `---
+id: CARD-300
+title: Com teste
+status: testando
+---
+
+## Como testar
+
+1. Abra o admin. Esperado: login.
+
+## Credenciais necessárias
+
+- CENVIA_PROD_LOGIN — status: preenchida
+- META_TEST_ACCOUNT — status: ausente
+- ANDROID_DEVICE
+
+## Notas
+
+- x
+`
+
+test('card em cards/testando entra na coluna testando, entre review e done', () => {
+  const raiz = mkdtempSync(join(tmpdir(), 'sle-testando-'))
+  mkdirSync(join(raiz, 'cards', 'testando'), { recursive: true })
+  writeFileSync(join(raiz, 'cards', 'testando', 'CARD-300.md'), CARD_TESTE)
+  const i = indexarCards(raiz)
+  assert.equal(i.board.testando.length, 1)
+  const chaves = Object.keys(i.board)
+  assert.ok(chaves.indexOf('testando') === chaves.indexOf('review') + 1)
+  assert.equal(chaves.indexOf('done'), chaves.indexOf('testando') + 1)
+})
+
+test('extrairSecao devolve o passo a passo e para no proximo titulo', () => {
+  const c = lerCard(CARD_TESTE)
+  assert.match(extrairSecao(c.corpo, 'Como testar'), /^1\. Abra o admin/)
+  assert.doesNotMatch(extrairSecao(c.corpo, 'Como testar'), /CENVIA/)
+  assert.equal(extrairSecao(c.corpo, 'Inexistente'), null)
+})
+
+test('credenciais: so nome e status; sem status vira ausente; card sem secao devolve lista vazia', () => {
+  assert.deepEqual(lerCard(CARD_TESTE).credenciais, [
+    { chave: 'CENVIA_PROD_LOGIN', status: 'preenchida' },
+    { chave: 'META_TEST_ACCOUNT', status: 'ausente' },
+    { chave: 'ANDROID_DEVICE', status: 'ausente' },
+  ])
+  assert.deepEqual(extrairCredenciais('## Notas\n\n- x\n'), [])
 })
