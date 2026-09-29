@@ -9,7 +9,8 @@
 import { extractQuestion } from './question.js'
 import { normalizarPrioridade, pesoPrioridade } from './prioridade.js'
 
-const KEPT_FIELDS = ['id', 'title', 'prioridade', 'coluna', 'risk', 'owner', 'prazo', 'modelo', 'rotuloProjeto', 'modificado', 'updated']
+// So o que a linha do card mostra (o resto vem em /api/cards/<id>): cada campo a mais e multiplicado por 250 cards em 4G.
+const KEPT_FIELDS = ['id', 'title', 'prioridade', 'coluna', 'rotuloProjeto', 'modificado']
 
 /** `diegocezimbra/01-app-billing` -> `01-app-billing`. O parser le `project:` vazio como `{}`: vira ''. */
 export function projectLabel(project) {

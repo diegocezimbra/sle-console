@@ -94,7 +94,8 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url)
   if (url.origin !== self.location.origin) return
   if (request.mode === 'navigate') return event.respondWith(navigation(request, url))
-  if (DATA_ROUTES.test(url.pathname) && !NEVER_CACHE.test(url.pathname)) return event.respondWith(data(request))
+  // `?desde=` e o poll de mensagens novas do chat (a cada poucos segundos, sempre um valor diferente): nao entra no cache.
+  if (DATA_ROUTES.test(url.pathname) && !NEVER_CACHE.test(url.pathname) && !url.searchParams.has('desde')) return event.respondWith(data(request))
   if (ASSET_SET.has(url.pathname)) return event.respondWith(asset(request, url))
 })
 

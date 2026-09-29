@@ -46,6 +46,32 @@ execução** — um hook que morre não pode derrubar sua sessão de trabalho.
 | **Métricas** | grafo de iteração maker↔checker, turnos por card, reprovações por gate, taxa de escalonamento, tempo de review humano e custo por card |
 | **Histórico** | por data: o que foi **entregue** (chegou em `done`), o que só andou de coluna, quais agentes trabalharam, quantas reprovações e o custo de cada card |
 
+## No celular (CARD-094)
+
+Em tela pequena (`< 768 px`, ou celular deitado) a mesma URL abre o **shell do celular** (`web/mobile/`) no
+lugar do `app.js`; `?desktop=1` força a versão completa (Editar, Controle, Métricas…). Quatro abas no rodape:
+**Chat · Pendentes · Quadro · Busca**, cada uma com contador.
+
+| tela | rota | o que faz |
+|---|---|---|
+| **Pendentes** | `/pending` (inicial) | cards em `pendente-diego` por prioridade, a pergunta e um botao por opcao entre aspas; tocar registra a resposta |
+| **Quadro** | `/board` | uma coluna por vez (scroll-snap), abas com contador, filtros de prioridade/projeto num painel |
+| **Busca** | `/search` | id, titulo, projeto e texto (no servidor); sem termo, os mexidos por ultimo |
+| **Card** | `/card/<id>` | tela cheia, voltar pelo historico, Responder fixo no rodape, "Dados" e "Atividades da IA" recolhidas |
+| **Chat** | `/chat` | campo fixo acima da barra (acompanha o teclado), anexo de foto por camera/galeria |
+
+- **API enxuta**: `GET /api/cards?summary=1` (sem corpo, com `question` nos pendentes; ~120 KB contra 1,3 MB),
+  `GET /api/search?q=`, `GET /api/cards/<id>` (agora com `question` e `notes`),
+  `POST /api/chat/attachments` (texto + ate 4 imagens; a imagem vai para `chat/anexos/<dia>/` no mesmo commit).
+- **PWA**: `manifest.json`, icones e `sw.js` sao publicos (o navegador os busca sem senha). O servidor troca
+  `__BUILD__`/`__ASSETS__` no `sw.js` a cada mudanca de `web/`, entao cada deploy renova o cache. Sem rede o app
+  abre pelo cache e mostra o ultimo estado (`x-sle-offline`). Push: `GET /api/push/key`,
+  `POST /api/push/subscribe|unsubscribe`; chave VAPID e aparelhos em `<dados>/push/` (0600). O **disparo** e do
+  CARD-240 (`loadVapid`, `listSubscriptions` em `src/push.js`; payload que o sw entende: `{title, body, url, tag}`).
+- **Tema**: claro e escuro seguem o sistema; `test/contrast.test.js` reprova tom novo abaixo de AA (4,5:1).
+- **Testes de toque**: `test/apoio/mobile.js` (`tocar`, `deslizar`, `escolherArquivo`) usa eventos de toque de
+  verdade pelo CDP. `Input.synthesizeScrollGesture` com `touch` nao rola neste Chrome headless; os eventos sim.
+
 ## O que o daemon recusa fazer
 
 Estas não são configurações, são limites do desenho:

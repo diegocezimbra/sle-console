@@ -14,6 +14,7 @@
   --m-warn-ink: #1a1204;
   --m-ok: #57b872;
   --m-danger: #e5706b;
+  --m-danger-ink: #1a0808;
   --m-focus: #8cc8f5;
   --m-tab-h: 56px;
   --m-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, system-ui, sans-serif;
@@ -32,9 +33,15 @@
     --m-warn-ink: #ffffff;
     --m-ok: #1c7a3a;
     --m-danger: #b3261e;
+    --m-danger-ink: #ffffff;
     --m-focus: #0a5fa8;
   }
 }
+
+/* Bases que o style.css do desktop dava e o celular nao baixa mais. */
+*, *::before, *::after { box-sizing: border-box; }
+/* O atributo hidden precisa vencer os display: flex das classes. */
+[hidden] { display: none !important; }
 
 html[data-modo="mobile"] body {
   margin: 0;
@@ -55,11 +62,11 @@ html[data-modo="mobile"] #m-app { display: flex; flex-direction: column; height:
 #m-app button, #m-app input, #m-app a { -webkit-tap-highlight-color: transparent; }
 
 /* Topo, aviso de rede, tela e abas */
-.m-top { flex: none; display: flex; align-items: center; gap: 8px; padding: calc(10px + env(safe-area-inset-top)) 16px 10px; background: var(--m-bg); border-bottom: 1px solid var(--m-border); }
+.m-top { flex: none; display: flex; align-items: center; gap: 8px; min-height: calc(65px + env(safe-area-inset-top)); padding: calc(10px + env(safe-area-inset-top)) 16px 10px; background: var(--m-bg); border-bottom: 1px solid var(--m-border); }
 .m-top h1 { flex: 1; margin: 0; font-size: 22px; line-height: 1.2; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--m-text); }
 .m-offline { flex: none; margin: 0; padding: 8px 16px; background: var(--m-warn); color: var(--m-warn-ink); font-size: 14px; font-weight: 600; }
 .m-screen { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 12px 12px 20px; outline: none; }
-.m-tabs { flex: none; display: grid; grid-template-columns: repeat(4, 1fr); background: var(--m-surface); border-top: 1px solid var(--m-border); padding-bottom: env(safe-area-inset-bottom); }
+.m-tabs { flex: none; display: grid; grid-template-columns: repeat(4, 1fr); min-height: calc(var(--m-tab-h) + 1px + env(safe-area-inset-bottom)); background: var(--m-surface); border-top: 1px solid var(--m-border); padding-bottom: env(safe-area-inset-bottom); }
 .m-tab { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: var(--m-tab-h); padding: 6px 4px; color: var(--m-muted); text-decoration: none; font-size: 12px; font-weight: 600; }
 .m-tab[aria-current="page"] { color: var(--m-accent); }
 .m-tab[aria-current="page"]::before { content: ""; position: absolute; top: 0; left: 25%; right: 25%; height: 3px; border-radius: 0 0 3px 3px; background: var(--m-accent); }
@@ -79,6 +86,10 @@ html[data-modo="mobile"] #m-app { display: flex; flex-direction: column; height:
 
 /* Pendentes */
 .m-list { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; }
+/* Fora da tela o item nem entra no layout (content-visibility): com dezenas de cards o 1o layout media 500 ms no CPU lento. */
+.m-pend, .m-row { content-visibility: auto; }
+.m-pend { contain-intrinsic-size: auto 260px; }
+.m-row { contain-intrinsic-size: auto 92px; }
 .m-pend { --tone: var(--pri-p3, #4b5563); position: relative; display: flex; flex-direction: column; gap: 10px; padding: 14px 14px 14px 19px; background: var(--m-surface); border: 1px solid var(--m-border); border-radius: 14px; overflow: hidden; }
 .m-pend::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--tone); }
 .m-pend[data-tone="P-1"] { --tone: var(--pri-p-1, #7f1d1d); }
@@ -200,7 +211,7 @@ html[data-modo="mobile"] #m-card:not([hidden]) { position: fixed; inset: 0; z-in
 .m-card-title { margin: 0; font-size: 20px; line-height: 1.3; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--m-text); overflow-wrap: anywhere; outline: none; }
 .m-card-title-wrap { margin: 0 0 12px; }
 .m-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 16px; }
-.m-risk[data-risk="alto"] { background: var(--m-danger); color: #fff; }
+.m-risk[data-risk="alto"] { background: var(--m-danger); color: var(--m-danger-ink); border-color: transparent; }
 .m-risk { background: var(--m-surface-2); border: 1px solid var(--m-border); color: var(--m-muted); }
 .m-alert { margin: 0 0 16px; padding: 10px 12px; border: 1px solid var(--m-warn); border-radius: 10px; background: var(--m-surface-2); color: var(--m-text); font-size: 15px; }
 .m-h2 { margin: 0 0 8px; font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--m-muted); }
@@ -262,3 +273,13 @@ html[data-card-open] .m-toast { bottom: calc(84px + env(safe-area-inset-bottom))
 .m-update-btn { min-height: 44px; padding: 0 16px; border: 0; border-radius: 10px; background: var(--m-accent); color: var(--m-accent-ink); font: 700 15px/1 var(--m-font); cursor: pointer; }
 .m-notify[aria-pressed="true"] { border-color: var(--m-ok); color: var(--m-ok); }
 .m-notify[data-state="denied"] { color: var(--m-muted); }
+
+/* Formulario de credenciais de teste (credenciais.js, CARD-202) dentro do card: o CSS dele vivia no style.css do desktop */
+.m-card .cred-lista { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.m-card .cred-linha { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.m-card .cred-status { font-size: 13px; color: var(--m-muted); }
+.m-card .cred-ausente .cred-status { color: var(--m-warn); }
+.m-card .cred-preenchida .cred-status { color: var(--m-ok); }
+.m-card .cred-form { display: flex; flex: 1 1 100%; align-items: flex-start; gap: 8px; }
+.m-card .cred-valor { flex: 1; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.m-card .cred-msg { color: var(--m-danger); font-size: 13px; }

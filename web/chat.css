@@ -1,4 +1,4 @@
-:root{--fundo:#0f1115;--painel:#171a21;--borda:#252a34;--texto:#d7dae0;--fraco:#8b93a1;--diego:#1f3a52;--deus:#232838;--erro:#c25450;--link:#4aa3df}
+:root{--fundo:#0f1115;--painel:#171a21;--borda:#252a34;--texto:#d7dae0;--fraco:#9aa3b2;--diego:#1f3a52;--deus:#232838;--erro:#e5706b;--link:#5bb0ea;--link-ink:#04121c}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html,body{height:100%}
@@ -55,4 +55,16 @@ h1{font-size:14px;margin:0;letter-spacing:.1em}
   body:has(#m-tabs:not([hidden])) #envio{padding-bottom:10px}
   body:has(#texto:focus) #m-tabs{display:none}
   body:has(#texto:focus) #envio{padding-bottom:max(10px,env(safe-area-inset-bottom))}
+}
+
+/* CARD-094 (tema): o chat segue o sistema, escuro ou claro, com contraste AA (test/contrast.test.js) */
+:root{color-scheme:dark light}
+#envio button{color:var(--link-ink)}
+.meta .via{opacity:1}
+@media (prefers-color-scheme: light){
+  :root{--fundo:#f3f4f6;--painel:#ffffff;--borda:#cfd5de;--texto:#14171c;--fraco:#4d5666;--diego:#d6e8f7;--deus:#e4e8ef;--erro:#b3261e;--link:#0a5fa8;--link-ink:#ffffff}
+  .msg code{background:#0000001a}
+  .msg pre{background:#00000012}
+  .msg .anexo img{background:#0000001a}
+  #envio .anexar-menu{box-shadow:0 8px 24px rgba(0,0,0,.18)}
 }

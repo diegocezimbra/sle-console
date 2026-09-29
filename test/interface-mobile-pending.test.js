@@ -100,7 +100,8 @@ test('as abas mostram contador: pendentes, review+testando e mensagens do DEUS n
   await browser.esperar(`document.querySelector('[data-badge="chat"]').textContent === '2'`)
   const badges = await browser.avaliar(`Object.fromEntries([...document.querySelectorAll('.m-badge')].filter((b) => !b.hidden).map((b) => [b.dataset.badge, b.textContent]))`)
   assert.deepEqual(badges, { chat: '2', pending: '4', board: '3' })
-  assert.equal(await browser.avaliar(`document.querySelector('#m-tabs a[data-tab="pending"]').getAttribute('aria-label')`), 'Pendentes, 4')
+  assert.equal(await browser.avaliar(`document.querySelector('#m-tabs a[data-tab="pending"]').innerText.replace(/\\s+/g, ' ').trim()`), 'Pendentes 4', 'o nome acessivel e o texto visivel')
+  assert.equal(await browser.avaliar(`document.querySelector('#m-tabs a[data-tab="pending"]').hasAttribute('aria-label')`), false)
 })
 
 test('a lista sai por prioridade: P-1, P0, P1, P2', { skip }, async () => {

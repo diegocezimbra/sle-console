@@ -44,17 +44,28 @@ export function reconcile(container, items, { key, signature, create }) {
     el.dataset.sig = sig
     return el
   })
-  const same = wanted.length === container.children.length && wanted.every((el, i) => container.children[i] === el)
-  if (!same) container.replaceChildren(...wanted)
+  const current = [...container.children]
+  if (wanted.length === current.length && wanted.every((el, i) => current[i] === el)) return
+  // Os nos que ja estao no comeco ficam onde estao (nada e removido nem reinserido): so o resto entra.
+  const keeps = current.length > 0 && current.length <= wanted.length && current.every((el, i) => wanted[i] === el)
+  if (keeps) container.append(...wanted.slice(current.length))
+  else container.replaceChildren(...wanted)
 }
 
-const TIME = { hour: '2-digit', minute: '2-digit' }
-const DATE_TIME = { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }
+/** Roda `fn` DEPOIS do proximo paint: o que nao e da 1a tela nao atrasa a 1a tela. */
+export function afterPaint(fn) {
+  requestAnimationFrame(() => setTimeout(fn, 0))
+}
 
-/** "14:52" se for hoje, "28/09 14:52" senao (horario local do aparelho). */
+const two = (n) => String(n).padStart(2, '0')
+
+/**
+ * "14:52" se for hoje, "28/09 14:52" senao (horario local do aparelho). Sem Intl/toLocaleString:
+ * so criar o formatador custava ~25 ms na 1a tela (100 ms com a CPU lenta) e o formato pt-BR e fixo.
+ */
 export function formatWhen(iso) {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return ''
-  const today = new Date().toDateString() === date.toDateString()
-  return date.toLocaleString('pt-BR', today ? TIME : DATE_TIME).replace(',', '')
+  const time = `${two(date.getHours())}:${two(date.getMinutes())}`
+  return new Date().toDateString() === date.toDateString() ? time : `${two(date.getDate())}/${two(date.getMonth() + 1)} ${time}`
 }

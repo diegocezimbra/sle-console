@@ -102,7 +102,7 @@ test('botao Avisos: pede permissao, cadastra o aparelho no servidor e desativa n
 })
 
 test('sem rede o app abre pelo cache e mostra o ultimo estado com o aviso', { skip }, async () => {
-  await browser.avaliar(`fetch('/api/cards?summary=1&projeto=%2A').then((r) => r.status)`) // garante o ultimo estado guardado
+  await browser.avaliar(`fetch('/api/cards?summary=1&projeto=*').then((r) => r.status)`) // garante o ultimo estado guardado
   await fx.pararServidor()
   await browser.ir(`${fx.base}/pending`)
   await browser.esperar(`document.body.dataset.pronto === 'sim' && document.querySelectorAll('.m-pend').length === 1`, { limite: 15000 })

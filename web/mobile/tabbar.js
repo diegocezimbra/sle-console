@@ -25,7 +25,7 @@ const isPlainClick = (event) => event.button === 0 && !event.ctrlKey && !event.m
 export function mountTabs(nav, { active, onSelect } = {}) {
   const links = new Map()
   for (const tab of TABS) {
-    const badge = h('span', { class: 'm-badge', dataset: { badge: tab.id }, 'aria-hidden': 'true', hidden: true })
+    const badge = h('span', { class: 'm-badge', dataset: { badge: tab.id }, hidden: true })
     const link = h('a', { class: 'm-tab', href: tab.href, dataset: { tab: tab.id } }, icon(ICONS[tab.id]), h('span', { class: 'm-tab-label' }, tab.label), badge)
     link.addEventListener('click', (event) => {
       if (!onSelect || tab.id === 'chat' || !isPlainClick(event)) return
@@ -45,13 +45,12 @@ export function mountTabs(nav, { active, onSelect } = {}) {
     }
   }
 
-  /** `{chat, pending, board}`; zero/ausente esconde o selo. O nome acessivel da aba leva o numero. */
+  /** `{chat, pending, board}`; zero/ausente esconde o selo. O nome acessivel e o texto visivel ("Pendentes 7"): sem aria-label que difira dele. */
   function setBadges(values) {
-    for (const [id, { link, badge, tab }] of links) {
+    for (const [id, { badge }] of links) {
       const n = Number(values[id] ?? 0)
       badge.hidden = !(n > 0)
       badge.textContent = n > 99 ? '99+' : String(n)
-      link.setAttribute('aria-label', n > 0 ? `${tab.label}, ${n}` : tab.label)
     }
   }
 

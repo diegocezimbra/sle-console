@@ -1,8 +1,8 @@
 // Aba Pendentes: os cards em `pendente-diego` por prioridade, cada um com a pergunta e um
 // botao por opcao. Tocar numa opcao ja registra a resposta (mesmo caminho do desktop).
 import { answerCard } from './api.js'
-import { clampedText } from './clamp.js'
-import { formatWhen, h, reconcile } from './dom.js'
+import { clampedText, measureClamps } from './clamp.js'
+import { afterPaint, formatWhen, h, reconcile } from './dom.js'
 import { priorityChip, priorityTone } from './priority.js'
 import { column, refresh, state, subscribe } from './store.js'
 
@@ -104,6 +104,9 @@ function buildItem(card, toast, openCard) {
     controls)
 }
 
+const FIRST_PAINT_ITEMS = 3
+const REST_CHUNK = 4
+let renderRun = 0
 const signature = (card) => JSON.stringify([card.id, card.title, card.prioridade, card.projectLabel, card.question])
 
 function skeleton() {
@@ -127,7 +130,22 @@ export function mountPending(root, { toast, openCard }) {
     failed.hidden = state.loaded || !state.offline
     list.hidden = cards.length === 0
     empty.hidden = !state.loaded || cards.length > 0
-    reconcile(list, cards, { key: (c) => c.id, signature, create: (c) => buildItem(c, toast, openCard) })
+    // 1a vez: so os itens que cabem na tela entram na 1a tarefa (e sao medidos, sem "ver mais" tardio); o
+    // resto entra logo depois do paint. Montar 16 cards de uma vez custava 350 ms de layout com a CPU lenta.
+    const options = { key: (c) => c.id, signature, create: (c) => buildItem(c, toast, openCard) }
+    const firstPaint = list.children.length === 0 && cards.length > FIRST_PAINT_ITEMS
+    const mine = ++renderRun
+    reconcile(list, firstPaint ? cards.slice(0, FIRST_PAINT_ITEMS) : cards, options)
+    measureClamps(list)
+    // O resto entra em lotes pequenos, um por paint: cada tarefa fica curta e a tela nao trava.
+    const more = (from) => afterPaint(() => {
+      if (mine !== renderRun) return // um render mais novo assumiu
+      const all = column('pendente-diego')
+      reconcile(list, all.slice(0, from + REST_CHUNK), options)
+      measureClamps(list)
+      if (from + REST_CHUNK < all.length) more(from + REST_CHUNK)
+    })
+    if (firstPaint) more(FIRST_PAINT_ITEMS)
   }
   const unsubscribe = subscribe(render)
   render()

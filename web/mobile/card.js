@@ -3,7 +3,7 @@
 import { markdownSeguro, semSecaoDeCredenciais } from '/card-md.js'
 import { pintarCredenciais as mountCredentialForm } from '/credenciais.js'
 import { ApiError, answerCard, getJson, postJson, withAllProjects } from './api.js'
-import { clampedText } from './clamp.js'
+import { clampedText, measureClamps } from './clamp.js'
 import { formatWhen, h, icon } from './dom.js'
 import { priorityChip } from './priority.js'
 import { COLUMN_LABELS } from './rows.js'
@@ -118,6 +118,7 @@ export function mountCard(layer, { id, toast, back, refresh, comProjeto = withAl
       fold('Atividades da IA', activityList(data.notes ?? [])),
     ]
     body.replaceChildren(...sections.filter(Boolean))
+    measureClamps(body)
     const slot = body.querySelector('[data-slot="cred-form"]')
     if (slot) mountCredentialForm(id, slot, comProjeto)
     body.querySelector('.m-card-title').focus({ preventScroll: true })
