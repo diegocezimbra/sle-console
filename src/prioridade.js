@@ -15,6 +15,19 @@ const MAPA_LEGADO = {
 
 const PADRAO = 'P3'
 
+/**
+ * Rótulo humano (CARD-120: "cadê as de prioridade alta?") -- o código `P1`
+ * não salta aos olhos de quem olha o board de relance; o rótulo salta.
+ * Só os 5 P's que o Diego pediu têm rótulo -- um P<n> fora desses (ex.: P9,
+ * legado nunca usado na prática) cai no próprio código.
+ */
+const ROTULOS = { 'P-1': 'URGENTE', P0: 'ALTÍSSIMA', P1: 'ALTA', P2: 'MÉDIA', P3: 'BAIXA' }
+
+/** @returns {string} rótulo humano para o P normalizado, ou o próprio código se não mapeado. */
+export function rotuloPrioridade(normalizada) {
+  return ROTULOS[normalizada] ?? normalizada
+}
+
 /** @returns {string} sempre no formato `P<n>` (aceita negativo: `P-1`). */
 export function normalizarPrioridade(bruta) {
   if (bruta == null || bruta === '') return PADRAO
