@@ -583,12 +583,18 @@ async function abrirCard(id) {
   if (c.modelo) chips.push(chip(c.modelo))
   $('modal-meta').replaceChildren(...chips)
 
-  $('modal-corpo').innerHTML = markdownSeguro(c.corpo ?? '')
+  $('modal-corpo').innerHTML = markdownSeguro(semSecaoDeCredenciais(c.corpo ?? ''))
   pintarCredenciais(c)
   pintarRespostas(c)
   pintarSeletorOpcoes(c)
   $('modal-resolver').hidden = c.coluna !== 'pendente-diego'
   showModal()
+}
+
+/** A seção "Credenciais necessárias" NUNCA é renderizada como texto livre (alguém pode ter colado um valor):
+ *  o painel dedicado abaixo mostra só nome + status. */
+function semSecaoDeCredenciais(corpo) {
+  return corpo.replace(/^## Credenciais necessárias[^\n]*\n[\s\S]*?(?=^## |(?![\s\S]))/m, '')
 }
 
 /** Credenciais de teste do card: só NOME e status (o valor nunca chega ao console). */

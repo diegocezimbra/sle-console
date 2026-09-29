@@ -21,7 +21,7 @@ before(async () => {
     '---\nid: CARD-008\ntitle: Card urgente\nstatus: backlog\nrisk: baixo\nprioridade: urgente\n---\ncorpo\n')
 
   writeFileSync(join(projeto, 'cards', 'testando', 'CARD-300.md'),
-    '---\nid: CARD-300\ntitle: Em teste em producao\nstatus: testando\nrisk: baixo\n---\n\n## Como testar\n\n1. Abrir o admin.\n\n## Credenciais necessárias\n\n- CENVIA_PROD_LOGIN — status: preenchida\n- META_TEST_ACCOUNT — status: ausente\n')
+    '---\nid: CARD-300\ntitle: Em teste em producao\nstatus: testando\nrisk: baixo\n---\n\n## Como testar\n\n1. Abrir o admin.\n\n## Credenciais necessárias\n\n- CENVIA_PROD_LOGIN — status: preenchida\n- META_TEST_ACCOUNT — status: ausente\n\nsenha colada por engano: hunter2\n')
 
   const d = criarDaemon({ dados: mkdtempSync(join(tmpdir(), 'sle-bd-')), projeto })
   await new Promise((r) => d.servidor.listen(0, '127.0.0.1', r))
@@ -143,6 +143,7 @@ test('CARD-201: o modal mostra Como testar e as credenciais com status por chave
   await browser.avaliar(`document.querySelector('#tela-board [data-card="CARD-300"]').click()`)
   await browser.esperar(`document.getElementById('modal-card').hidden === false`)
   assert.match(await browser.avaliar(`document.getElementById('modal-corpo').textContent`), /Como testar/)
+  assert.doesNotMatch(await browser.avaliar(`document.getElementById('modal-card').textContent`), /hunter2/, 'valor nunca renderizado')
   const creds = await browser.avaliar(
     `[...document.querySelectorAll('#modal-credenciais li')].map((li) => li.dataset.status + ':' + li.firstChild.textContent).join('|')`)
   assert.equal(creds, 'preenchida:CENVIA_PROD_LOGIN|ausente:META_TEST_ACCOUNT')
