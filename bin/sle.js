@@ -5,6 +5,7 @@
  * A configuração vem de `config.json` na raiz da instalação (ou de
  * `SLE_CONFIG`). Variável de ambiente ainda vence, para uso pontual.
  */
+import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -65,6 +66,9 @@ const tetoDiarioUsd = Number(process.env.SLE_TETO_USD ?? cfg.tetoDiarioUsd)
  * aponta pro repositório dono do censo (`estado/sessoes.json`, hoje só o
  * 00-DEUS); sem essa env, nenhum publicar-loop sobe -- não dá pra publicar o
  * censo de um repositório que não observa `estado/sessoes.json`.
+ * CARD-226/288: o daemon só GRAVA `estado-publico/sessoes.json` nesse checkout e
+ * PEDE a publicação a `<dir>/bin/deus publicar-censo` (clone privado do publish);
+ * nunca faz `git commit`/`push`/`pull` nele -- era o que divergia a `main`.
  */
 const publicarCensoDir = !modoGit ? process.env.SLE_PUBLICAR_CENSO_DIR ?? null : null
 const publicarLocal = publicarCensoDir
@@ -79,6 +83,11 @@ const publicarLocal = publicarCensoDir
       janelaPublicacaoMs: Number(process.env.SLE_PUBLICAR_JANELA_H ?? 6) * 3600_000,
     }
   : null
+
+// Sem o comando do 00-DEUS o censo é gravado mas não chega ao GitHub: avisa no boot em vez de falhar calado a cada 2 min.
+if (publicarCensoDir && !existsSync(join(publicarCensoDir, 'bin', 'deus-publicar-censo'))) {
+  console.warn(`  ! ${join(publicarCensoDir, 'bin', 'deus-publicar-censo')} não existe: o censo é gravado mas NÃO publicado (atualize os scripts do 00-deus)`)
+}
 
 const { servidor, observador, runner, otlp, pararGit, pararPublicarLocal } = criarDaemon({
   dados,
@@ -96,7 +105,7 @@ servidor.listen(porta, host, () => {
   for (const r of raiz) console.log(`             ${r}`)
   console.log(`  dados      ${dados}/events.jsonl`)
   if (git) console.log(`  git        ${git.dataDir} (pull a cada ${git.intervalMs}ms)`)
-  if (publicarLocal) console.log(`  censo      publica ${publicarLocal.publicoPath} a cada ${publicarLocal.intervalMs}ms`)
+  if (publicarLocal) console.log(`  censo      grava ${publicarLocal.publicoPath} (checa a cada ${publicarLocal.intervalMs}ms) e pede a publicação por \`deus publicar-censo\` -- sem git neste checkout`)
   otlp.listen(portaOtlp, '127.0.0.1', () =>
     console.log(`  otlp       http://127.0.0.1:${portaOtlp}/v1/metrics`)
   )
