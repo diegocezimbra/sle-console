@@ -14,6 +14,7 @@ import { Estado } from './estado.js'
 import { createAuthMiddleware } from './auth.js'
 import { startPullLoop, commitAndPush } from './gitSync.js'
 import { criarPublicadorEstado, lerEstadoPublico } from './estadoPublico.js'
+import { criarSolicitadorPublicacao } from './publicarCenso.js'
 import { normalizar } from './ingest.js'
 import { indexarCards } from './cards.js'
 import { diffDoArquivo, estadoDoGit, historico, prsAbertos } from './repo.js'
@@ -66,10 +67,13 @@ export function criarDaemon({
   raiz = null,
   tetoDiarioUsd = Infinity,
   git = null, // { dataDir, keyPath, intervalMs? } quando CONSOLE_MODE=git; `projeto` já é o clone.
-  // { publicoPath, dataDir, intervalMs?, janelaAtivaMs?, limiteEventos?, throttleMs? } no console LOCAL
-  // (CARD-120): publica o `Estado` vivo (o mesmo que alimenta a aba Agentes daqui) redigido
-  // em `publicoPath` e empurra pro git a cada `intervalMs` -- é o que o console em modo git
-  // lê pra popular AGENTES e a régua, já que não tem rede direta até aqui pros hooks de sessão.
+  // { publicoPath, dataDir, intervalMs?, janelaAtivaMs?, limiteEventos?, throttleMs?, solicitarPublicacao? } no
+  // console LOCAL (CARD-120): grava o `Estado` vivo (o mesmo que alimenta a aba Agentes daqui) redigido em
+  // `publicoPath` a cada `intervalMs` e, quando muda de verdade, PEDE a publicação -- é o que o console em
+  // modo git lê pra popular AGENTES e a régua, já que não tem rede direta até aqui pros hooks de sessão.
+  // CARD-226/288: quem leva o arquivo ao GitHub é `deus publicar-censo` (clone privado do publish; ver
+  // publicarCenso.js), NUNCA `git commit`/`push`/`pull` no checkout em `dataDir`. `solicitarPublicacao` (opcional)
+  // substitui o pedido real -- é o ponto de injeção dos testes.
   publicarLocal = null,
   credenciaisDir = join(dados, '..', 'credenciais'), // volume privado dos `.age` (fora do git)
   ageBin = 'age',
@@ -122,12 +126,18 @@ export function criarDaemon({
         throttleMs: publicarLocal.throttleMs,
       })
     : null
+  const solicitarPublicacao = publicarLocal
+    ? publicarLocal.solicitarPublicacao ?? criarSolicitadorPublicacao({ deusHome: publicarLocal.dataDir })
+    : null
 
   /** Fecha o ciclo local do CARD-120: redige o `Estado` vivo (sessões E fluxo
-   *  recente, pra régua), escreve o arquivo público e empurra pro remoto --
-   *  mesmo mecanismo de `commitAndPush` que já versiona `respostas/`. Erro
-   *  aqui vira evento, nunca derruba o daemon: uma sessão sem publicar ainda
-   *  deixa a máquina inteira observável por outra via. */
+   *  recente, pra régua), grava o arquivo público no checkout e PEDE a
+   *  publicação ao `deus publicar-censo` (CARD-226/288) -- o mesmo caminho dos
+   *  cards: clone privado, merge de 3 vias, envio simples. Nada de git neste
+   *  checkout: era o commit com envio e pull com rebase feitos aqui que
+   *  sujavam a árvore e divergiam a `main`. Erro aqui vira evento, nunca derruba o
+   *  daemon: uma sessão sem publicar ainda deixa a máquina inteira
+   *  observável por outra via. */
   function publicarSessoesLocais() {
     let mudou
     try {
@@ -141,15 +151,27 @@ export function criarDaemon({
     }
     // `mudou:false` cobre dois casos: nada de real mudou (campo volátil
     // sozinho não conta), ou mudou mas o throttle de 2min ainda está
-    // segurando -- os dois sem o que commitar agora.
+    // segurando -- os dois sem o que publicar agora.
     if (!mudou) return
-    const resultado = commitAndPush({
-      dataDir: publicarLocal.dataDir,
-      paths: [relative(publicarLocal.dataDir, publicarLocal.publicoPath)],
-      message: 'chore(console): publica sessões ativas',
-    })
-    if (!resultado.ok) {
-      registrar({ kind: 'git.push.falhou', loop: 'L3', card: null, session: null, payload: { erro: resultado.stderr } })
+    pedirPublicacaoDoCenso()
+  }
+
+  /** O pedido volta na hora (a publicação roda em segundo plano, com lock e
+   *  marcador durável no 00-DEUS); aqui só se registra quando NEM o pedido
+   *  saiu. Falha de publicação em si fica no log do publish -- e o arquivo
+   *  gravado segue no checkout, então o próximo ciclo (ou a publicação de
+   *  qualquer card) ainda o leva. */
+  function pedirPublicacaoDoCenso() {
+    const falhou = (erro, status = null) =>
+      registrar({ kind: 'estado-publico.publicacao.falhou', loop: 'L3', card: null, session: null, payload: { erro: String(erro), status } })
+    try {
+      Promise.resolve(solicitarPublicacao())
+        .then((r) => {
+          if (!r?.ok) falhou(r?.erro ?? 'pedido recusado', r?.status ?? null)
+        })
+        .catch((erro) => falhou(erro?.message ?? erro))
+    } catch (erro) {
+      falhou(erro?.message ?? erro)
     }
   }
   const publicarLoop = publicarLocal

@@ -31,25 +31,25 @@ function criarRepoLocal() {
   return { remoto, local }
 }
 
-test('publicarLocal publica a sessao viva de verdade (hook real), nao um censo estatico', async () => {
-  const { remoto, local } = criarRepoLocal()
-
-  const d = criarDaemon({
-    dados: mkdtempSync(join(tmpdir(), 'sle-dados-')),
+/** Daemon local com o censo ligado; `solicitarPublicacao` é o pedido ao `deus publicar-censo` (injetado). */
+function daemonComCenso(local, solicitarPublicacao, dados = mkdtempSync(join(tmpdir(), 'sle-dados-'))) {
+  return criarDaemon({
+    dados,
     projeto: local,
     raiz: [local],
     publicarLocal: {
       publicoPath: join(local, 'estado-publico', 'sessoes.json'),
       dataDir: local,
       intervalMs: 50,
+      solicitarPublicacao,
     },
   })
-  await new Promise((r) => d.servidor.listen(0, '127.0.0.1', r))
-  const base = `http://127.0.0.1:${d.servidor.address().port}`
+}
 
-  // O mesmo caminho que os hooks de verdade batem: session_id + card
-  // (injetado pelo deus-hook-console) chegando como evento de sessão viva.
-  await fetch(`${base}/api/hook`, {
+/** O mesmo caminho que os hooks de verdade batem: session_id + card (injetado pelo deus-hook-console). */
+async function hookDeSessaoViva(d) {
+  await new Promise((r) => d.servidor.listen(0, '127.0.0.1', r))
+  await fetch(`http://127.0.0.1:${d.servidor.address().port}/api/hook`, {
     method: 'POST',
     body: JSON.stringify({
       session_id: 'sess-viva', hook_event_name: 'PostToolUse', card: 'CARD-118',
@@ -57,25 +57,66 @@ test('publicarLocal publica a sessao viva de verdade (hook real), nao um censo e
       tool_name: 'Edit', tool_input: { file_path: 'a.ts' }, tool_response: { success: true },
     }),
   })
+}
 
-  await new Promise((r) => setTimeout(r, 300))
+async function pararDaemon(d) {
   d.pararPublicarLocal()
   d.observador.parar()
   await new Promise((r) => d.servidor.close(r))
+}
 
-  const verificacao = mkdtempSync(join(tmpdir(), 'sle-verifica-censo-'))
-  git(['clone', remoto, verificacao])
-  const publicado = JSON.parse(readFileSync(join(verificacao, 'estado-publico', 'sessoes.json'), 'utf8'))
+test('publicarLocal grava a sessao viva de verdade (hook real) e PEDE a publicacao, sem tocar no git do checkout', async () => {
+  const { remoto, local } = criarRepoLocal()
+  const headAntes = git(['rev-parse', 'HEAD'], local).trim()
+  let pedidos = 0
+
+  const d = daemonComCenso(local, async () => { pedidos += 1; return { ok: true } })
+  await hookDeSessaoViva(d)
+  await new Promise((r) => setTimeout(r, 300))
+  await pararDaemon(d)
+
+  // O arquivo no checkout é o que o publish do clone privado leva ao GitHub (CARD-226/288).
+  const publicado = JSON.parse(readFileSync(join(local, 'estado-publico', 'sessoes.json'), 'utf8'))
   assert.equal(publicado.sessoes.length, 1)
   assert.equal(publicado.sessoes[0].card, 'CARD-118')
   assert.equal(publicado.sessoes[0].ativa, true)
   assert.equal(publicado.sessoes[0].projeto, '13-chatomnichannel')
   assert.ok(publicado.eventos.length >= 1, 'o fluxo redigido tambem precisa ir junto, pra regua')
 
-  // Intervalo de 50ms rodando por 300ms tica ~6x sem evento novo -- só o
-  // primeiro tick tem o que commitar (revisão do PR #4).
-  const commits = git(['log', '--oneline', 'main'], verificacao).trim().split('\n')
-  assert.equal(commits.length, 2, `esperava 1 commit de publish + 1 seed, veio:\n${commits.join('\n')}`)
+  // Intervalo de 50ms rodando por 300ms tica ~6x sem evento novo -- só o primeiro tick tem o que pedir (revisão do PR #4).
+  assert.equal(pedidos, 1, `esperava 1 pedido de publicacao, vieram ${pedidos}`)
+
+  // A causa raiz do CARD-288: o daemon fazia commit + push (+ pull --rebase) na main do checkout compartilhado.
+  assert.equal(git(['rev-parse', 'HEAD'], local).trim(), headAntes, 'a main do checkout nao pode ganhar commit')
+  assert.equal(git(['diff', '--cached', '--name-only'], local).trim(), '', 'nada pode ficar em stage no checkout')
+  assert.equal(git(['log', '--oneline', 'main'], remoto).trim().split('\n').length, 1, 'o daemon nao empurra: so o seed no remoto')
+})
+
+test('pedido de publicacao que falha vira evento e o arquivo local nao se perde', async () => {
+  const { local } = criarRepoLocal()
+  const d = daemonComCenso(local, async () => ({ ok: false, status: 1, erro: 'publicador ausente' }))
+
+  await hookDeSessaoViva(d)
+  await new Promise((r) => setTimeout(r, 300))
+  await pararDaemon(d)
+
+  const falhas = d.estado.todos().filter((e) => e.kind === 'estado-publico.publicacao.falhou')
+  assert.equal(falhas.length, 1)
+  assert.match(falhas[0].payload.erro, /publicador ausente/)
+  assert.equal(JSON.parse(readFileSync(join(local, 'estado-publico', 'sessoes.json'), 'utf8')).sessoes.length, 1)
+})
+
+test('pedido que lanca excecao (bug) tambem nao derruba o daemon: vira evento', async () => {
+  const { local } = criarRepoLocal()
+  const d = daemonComCenso(local, () => { throw new Error('quebrou o spawn') })
+
+  await hookDeSessaoViva(d)
+  await new Promise((r) => setTimeout(r, 300))
+  await pararDaemon(d)
+
+  const falhas = d.estado.todos().filter((e) => e.kind === 'estado-publico.publicacao.falhou')
+  assert.equal(falhas.length, 1)
+  assert.match(falhas[0].payload.erro, /quebrou o spawn/)
 })
 
 test('console em modo git le o arquivo publico: sessao viva vira ativa:true com card e ultimoPasso', async () => {
