@@ -7,9 +7,10 @@
  * *what* to commit. This module only knows how to run the git commands
  * safely (deploy key isolated via `GIT_SSH_COMMAND`, no shell interpolation).
  */
-import { spawnSync } from 'node:child_process'
 import { existsSync, chmodSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
+
+import { runCommandSync } from './run-command.js'
 
 /**
  * Writes the deploy key to `keyPath` with 0600 permissions, as required by
@@ -23,13 +24,7 @@ export function writeDeployKey(keyPath, keyContents) {
 }
 
 function run(args, { cwd, env } = {}) {
-  const result = spawnSync('git', args, { cwd, env, encoding: 'utf8' })
-  return {
-    ok: result.status === 0,
-    status: result.status,
-    stdout: result.stdout ?? '',
-    stderr: result.stderr ?? '',
-  }
+  return runCommandSync('git', args, { cwd, env })
 }
 
 /**

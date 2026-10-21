@@ -12,8 +12,9 @@
  *
  * Nenhum git neste módulo, de propósito: há um teste que garante.
  */
-import { execFile } from 'node:child_process'
 import { join } from 'node:path'
+
+import { runPeriodicCommand } from './run-command.js'
 
 const TIMEOUT_PADRAO_MS = 15_000
 const LIMITE_ERRO = 500
@@ -28,35 +29,20 @@ export function criarSolicitadorPublicacao({
   comando = join(deusHome, 'bin', 'deus'),
   env = {},
   timeoutMs = TIMEOUT_PADRAO_MS,
-  executar = execFile,
+  executar = runPeriodicCommand,
 }) {
   return function solicitarPublicacao() {
-    return new Promise((resolve) => {
-      let terminou = false
-      const encerrar = (resultado) => {
-        if (terminou) return
-        terminou = true
-        clearTimeout(limite)
-        resolve(resultado)
-      }
-      // Cinto e suspensório: o `timeout` do execFile só mata o filho direto; se algo segurar o pipe, o pedido ainda assim volta.
-      const limite = setTimeout(() => encerrar({ ok: false, erro: `tempo esgotado (${timeoutMs}ms)` }), timeoutMs)
-      limite.unref?.()
-      try {
-        executar(
-          comando,
-          ['publicar-censo'],
-          { env: { ...process.env, DEUS_HOME: deusHome, ...env }, timeout: timeoutMs, killSignal: 'SIGKILL', encoding: 'utf8' },
-          (erro, _saida, stderr) => {
-            if (!erro) return encerrar({ ok: true })
-            const status = typeof erro.code === 'number' ? erro.code : null
-            const detalhe = String(stderr || '').trim() || [erro.code, erro.message].filter(Boolean).join(': ')
-            encerrar({ ok: false, status, erro: detalhe.slice(0, LIMITE_ERRO) })
-          }
-        )
-      } catch (erro) {
-        encerrar({ ok: false, erro: String(erro?.message ?? erro).slice(0, LIMITE_ERRO) })
-      }
-    })
+    return executar(comando, ['publicar-censo'], {
+      env: { ...process.env, DEUS_HOME: deusHome, ...env },
+      timeoutMs,
+      queue: 'publish',
+    }).then((result) => {
+      if (result.ok) return { ok: true }
+      const status = typeof result.code === 'number' ? result.code : null
+      const detalhe = result.timedOut
+        ? `tempo esgotado (${timeoutMs}ms)`
+        : String(result.stderr || result.error || result.signal || 'falha ao executar').trim()
+      return { ok: false, status, erro: detalhe.slice(0, LIMITE_ERRO) }
+    }).catch((erro) => ({ ok: false, erro: String(erro?.message ?? erro).slice(0, LIMITE_ERRO) }))
   }
 }

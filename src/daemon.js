@@ -5,7 +5,6 @@
  * seu ambiente de trabalho, cada dependencia e superficie de ataque.
  */
 import { createServer } from 'node:http'
-import { spawn, spawnSync } from 'node:child_process'
 import { readdirSync, readFileSync, renameSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join, relative } from 'node:path'
@@ -15,6 +14,7 @@ import { createAuthMiddleware } from './auth.js'
 import { startPullLoop, commitAndPush } from './gitSync.js'
 import { criarPublicadorEstado, lerEstadoPublico } from './estadoPublico.js'
 import { criarSolicitadorPublicacao } from './publicarCenso.js'
+import { runCommand } from './run-command.js'
 import { normalizar } from './ingest.js'
 import { indexarCards } from './cards.js'
 import { diffDoArquivo, estadoDoGit, historico, prsAbertos } from './repo.js'
@@ -333,7 +333,7 @@ export function criarDaemon({
     }
     if (req.method === 'PUT' && /^\/api\/credentials\/[^/]+$/.test(rota)) {
       const nome = decodeURIComponent(rota.split('/')[3])
-      return lerCorpo(req, LIMITE_CORPO_CREDENCIAL, (corpo) => {
+      return lerCorpo(req, LIMITE_CORPO_CREDENCIAL, async (corpo) => {
         if (corpo === null) {
           res.writeHead(413, { 'content-type': 'application/json; charset=utf-8' })
           return res.end(JSON.stringify({ erro: 'corpo acima do limite' }))
@@ -344,7 +344,7 @@ export function criarDaemon({
         } catch {
           valor = undefined
         }
-        const r = salvarCredencial({ dirAge: credenciaisDir, destinatario: ageRecipient, nome, valor, ageBin })
+        const r = await salvarCredencial({ dirAge: credenciaisDir, destinatario: ageRecipient, nome, valor, ageBin })
         res.writeHead(r.ok ? 200 : r.codigo, { 'content-type': 'application/json; charset=utf-8' })
         res.end(JSON.stringify(r.ok ? { ok: true, name: r.name, status: r.status } : { erro: r.erro }))
       })
@@ -653,12 +653,10 @@ export function criarDaemon({
   }
 
   function avisarTelegram(msg) {
-    // No clone da nuvem não existe `bin/deus` -- sem o listener de erro, um
-    // ENOENT assincrono derruba o processo inteiro (spawn emite 'error' fora
-    // do try/catch de quem chamou).
-    spawn(join(raizDeus, 'bin', 'deus'), ['telegram', msg], { detached: true, stdio: 'ignore' })
-      .on('error', () => {})
-      .unref()
+    // No clone da nuvem não existe `bin/deus`; o executor transforma ENOENT
+    // em resultado e isola o processo best-effort do request atual.
+    // Best effort: falha/timeout não pode derrubar nem atrasar a resposta.
+    void runCommand(join(raizDeus, 'bin', 'deus'), ['telegram', msg])
   }
 
   function lerRespostaDoCorpo(corpo) {
@@ -712,7 +710,7 @@ export function criarDaemon({
    *  evento do DEUS); no modo git não existe `deus` no clone -- move o
    *  arquivo direto e escreve a nota no próprio card, depois commita+empurra.
    *  Só faz sentido a partir de `pendente-diego`. */
-  function resolverPendencia(indiceAtual, id, corpo, res, registrarEvento) {
+  async function resolverPendencia(indiceAtual, id, corpo, res, registrarEvento) {
     const { opcao, texto } = lerRespostaDoCorpo(corpo)
     const card = indiceAtual.cards.find((c) => c.id === id) ?? achadoEmTodos(id)
     if (!card) return fim(res, 404)
@@ -735,9 +733,9 @@ export function criarDaemon({
         appendFileSync(destino, `\n## Nota\nPendência resolvida pelo Diego (${dataHoje})\n`)
         sincronizado = commitCardNoGit(`resposta do Diego: ${id}`, caminhosExtras)
       } else {
-        const mover = spawnSync(join(raizDeus, 'bin', 'deus'), ['task', 'move', id, 'aprovado'], { encoding: 'utf8' })
-        if (mover.status !== 0) throw new Error(mover.stderr || 'falha ao mover para aprovado')
-        spawnSync(join(raizDeus, 'bin', 'deus'), ['task', 'note', id, `Pendência resolvida pelo Diego (${dataHoje})`])
+        const mover = await runCommand(join(raizDeus, 'bin', 'deus'), ['task', 'move', id, 'aprovado'])
+        if (!mover.ok) throw new Error(mover.stderr || mover.error || 'falha ao mover para aprovado')
+        await runCommand(join(raizDeus, 'bin', 'deus'), ['task', 'note', id, `Pendência resolvida pelo Diego (${dataHoje})`])
       }
     } catch (e) {
       res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' })

@@ -6,9 +6,10 @@
  * Criptografa chamando o binário `age` (o mesmo que o DEUS usa para decriptar) em vez de reimplementar o formato:
  * criptografia caseira é o tipo de código que ninguém audita. O valor vai pelo stdin, nunca por argumento.
  */
-import { spawnSync } from 'node:child_process'
 import { mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+
+import { runCommand } from './run-command.js'
 
 export const RE_CHAVE = /^[A-Z][A-Z0-9_]{2,63}$/
 const LIMITE_VALOR = 64 * 1024
@@ -62,14 +63,20 @@ export function destinatarioDoAmbiente(env = process.env) {
 }
 
 /** Criptografa `valor` para `destinatario` e grava `<dirAge>/<nome>.age` (0600, atômico). Nunca devolve o valor. */
-export function salvarCredencial({ dirAge, destinatario, nome, valor, ageBin = 'age' }) {
+export async function salvarCredencial({ dirAge, destinatario, nome, valor, ageBin = 'age' }) {
   if (!RE_CHAVE.test(nome ?? '')) return { ok: false, codigo: 422, erro: 'nome de chave inválido' }
   if (typeof valor !== 'string' || valor.length === 0) return { ok: false, codigo: 422, erro: 'valor obrigatório' }
   if (Buffer.byteLength(valor, 'utf8') > LIMITE_VALOR) return { ok: false, codigo: 422, erro: 'valor acima de 64 KB' }
   if (!destinatario) return { ok: false, codigo: 503, erro: 'chave pública do DEUS indisponível (DEUS_AGE_RECIPIENT ausente no container)' }
 
-  const r = spawnSync(ageBin, ['-r', destinatario], { input: valor, maxBuffer: 4 * LIMITE_VALOR })
-  if (r.status !== 0 || !r.stdout?.length) return { ok: false, codigo: 500, erro: 'falha ao criptografar' }
+  // `age` recebe o segredo no stdin do executor, nunca em argv. O executor
+  // impõe prazo/tamanho e mata o grupo se o binário travar.
+  const r = await runCommand(ageBin, ['-r', destinatario], {
+    input: valor,
+    maxBuffer: 4 * LIMITE_VALOR,
+    binaryOutput: true,
+  })
+  if (!r.ok || !r.stdout?.length) return { ok: false, codigo: 500, erro: 'falha ao criptografar' }
 
   mkdirSync(dirAge, { recursive: true, mode: 0o700 })
   const destino = join(dirAge, `${nome}.age`)
@@ -78,4 +85,3 @@ export function salvarCredencial({ dirAge, destinatario, nome, valor, ageBin = '
   renameSync(tmp, destino)
   return { ok: true, name: nome, status: 'enviada' }
 }
-

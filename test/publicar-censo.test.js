@@ -76,6 +76,7 @@ test('comando travado e morto no limite de tempo e vira { ok:false }', async () 
   const r = await criarSolicitadorPublicacao({ deusHome: home, timeoutMs: 200 })()
 
   assert.equal(r.ok, false)
+  assert.match(r.erro, /tempo esgotado/)
   assert.ok(Date.now() - t0 < 2000, 'o limite de tempo precisa valer')
 })
 
