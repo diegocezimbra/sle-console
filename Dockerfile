@@ -7,7 +7,8 @@ FROM node:22-alpine
 # openssh-client: a deploy key fala com o GitHub por ssh, não https.
 # age: criptografa as credenciais de teste com a chave pública do DEUS (CARD-202).
 # curl: só pro HEALTHCHECK -- alpine não traz nenhum dos dois por padrão.
-RUN apk add --no-cache git openssh-client curl age
+# tini: PID 1 recolhe qualquer filho órfão, inclusive healthchecks do Docker.
+RUN apk add --no-cache git openssh-client curl age tini
 
 WORKDIR /app
 
@@ -28,12 +29,10 @@ USER console
 
 EXPOSE 7717
 
-# Sem `-f`: o objetivo é "o processo responde", não "responde sem
-# credencial" -- com CONSOLE_USER/CONSOLE_PASSWORD setados, /api/health
-# ainda devolve 200 (auth.js deixa `/api/health` de fora de propósito), mas
-# mesmo se algum dia exigir auth, `curl` sem `-f` só falha em erro de rede,
-# não em 401/403 (curl -f já matou HEALTHCHECK por 403 antes).
+# `/api/health` fica fora da autenticação; por isso `--fail` detecta resposta
+# HTTP ruim sem transformar uma credencial válida em healthcheck vermelho.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD curl -s -o /dev/null http://127.0.0.1:7717/api/health || exit 1
+  CMD ["curl", "--fail", "--silent", "--show-error", "--connect-timeout", "2", "--max-time", "4", "-o", "/dev/null", "http://127.0.0.1:7717/api/health"]
 
+ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "bin/sle.js"]

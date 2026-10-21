@@ -5,15 +5,13 @@
  * estado nulo, e nao excecao. Um painel de observacao nao pode cair porque a
  * pasta observada ainda nao tem `.git`.
  */
-import { execFileSync } from 'node:child_process'
 import { isAbsolute, normalize } from 'node:path'
 
+import { runCommandSync } from './run-command.js'
+
 const git = (dir, args) => {
-  try {
-    return execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
-  } catch {
-    return null
-  }
+  const result = runCommandSync('git', args, { cwd: dir })
+  return result.ok ? result.stdout : null
 }
 
 const TIPOS = { M: 'modificado', A: 'novo', D: 'apagado', R: 'renomeado', C: 'copiado', '?': 'novo' }
@@ -64,14 +62,10 @@ export function historico(dir, limite = 20) {
 
 /** PRs abertos, quando o `gh` existe e esta autenticado. Silencioso quando nao. */
 export function prsAbertos(dir) {
-  try {
-    const saida = execFileSync(
-      'gh',
-      ['pr', 'list', '--json', 'number,title,author,statusCheckRollup,isDraft,updatedAt', '--limit', '20'],
-      { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
-    )
-    return JSON.parse(saida)
-  } catch {
-    return []
-  }
+  const result = runCommandSync(
+    'gh',
+    ['pr', 'list', '--json', 'number,title,author,statusCheckRollup,isDraft,updatedAt', '--limit', '20'],
+    { cwd: dir }
+  )
+  try { return result.ok ? JSON.parse(result.stdout) : [] } catch { return [] }
 }

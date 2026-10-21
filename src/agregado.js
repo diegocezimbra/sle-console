@@ -5,7 +5,6 @@
  * está o trabalho e onde está o risco. Aqui os cards de todos entram no mesmo
  * board, cada um carregando de onde veio.
  */
-import { execFile } from 'node:child_process'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -13,6 +12,7 @@ import { indexarCards, COLUNAS } from './cards.js'
 import { ordenarPorPrioridade } from './prioridade.js'
 import { estadoDoGit } from './repo.js'
 import { descobrirProjetos } from './projetos.js'
+import { runPeriodicCommand } from './run-command.js'
 
 /** Valor reservado do seletor. Nunca é um caminho. */
 export const TODOS = '*'
@@ -110,18 +110,12 @@ export async function gitDeTodosAsync(raizes) {
 
 /** `null` quando o repositório está limpo -- só o sujo interessa aqui. */
 function statusRapido(projeto) {
-  return new Promise((resolver) => {
-    execFile(
-      'git',
-      ['status', '--porcelain'],
-      { cwd: projeto.caminho, timeout: 10000 },
-      (erro, saida) => {
-        if (erro) return resolver(null)
-        const linhas = saida.split('\n').filter(Boolean)
-        resolver(linhas.length ? { projeto: projeto.rotulo, alteracoes: linhas.length } : null)
-      }
-    )
-  })
+  return runPeriodicCommand('git', ['status', '--porcelain'], { cwd: projeto.caminho })
+    .then((result) => {
+      if (!result.ok) return null
+      const linhas = result.stdout.split('\n').filter(Boolean)
+      return linhas.length ? { projeto: projeto.rotulo, alteracoes: linhas.length } : null
+    })
 }
 
 /** Não existe "a branch" de 75 repositórios -- existe quantos estão sujos. */
