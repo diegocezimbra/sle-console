@@ -35,6 +35,7 @@ export function criarSolicitadorPublicacao({
     return executar(comando, ['publicar-censo'], {
       env: { ...process.env, DEUS_HOME: deusHome, ...env },
       timeoutMs,
+      queue: 'publish',
     }).then((result) => {
       if (result.ok) return { ok: true }
       const status = typeof result.code === 'number' ? result.code : null

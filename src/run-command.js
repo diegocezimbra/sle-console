@@ -32,7 +32,13 @@ export function createConcurrencyLimiter(limit = 2) {
   })
 }
 
-const periodicQueue = createConcurrencyLimiter(2)
+// Varreduras de git podem formar uma fila longa (uma por repositório). Elas
+// nunca devem ocupar as vagas do publish do censo, que é uma operação serial.
+const periodicQueues = {
+  gitScan: createConcurrencyLimiter(4),
+  publish: createConcurrencyLimiter(1),
+  misc: createConcurrencyLimiter(2),
+}
 
 export function runCommand(command, args, {
   cwd,
@@ -138,9 +144,10 @@ export function runCommand(command, args, {
   })
 }
 
-/** Comandos de timers: nunca mais de dois processos simultâneos. */
-export function runPeriodicCommand(command, args, options) {
-  return periodicQueue(() => runCommand(command, args, options))
+/** Comandos de timers têm filas independentes por finalidade. */
+export function runPeriodicCommand(command, args, { queue = 'misc', ...options } = {}) {
+  const limiter = periodicQueues[queue] ?? periodicQueues.misc
+  return limiter(() => runCommand(command, args, options))
 }
 
 /** Operações síncronas também usam os mesmos limites, sem poder travar para sempre. */

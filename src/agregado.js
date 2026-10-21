@@ -110,7 +110,7 @@ export async function gitDeTodosAsync(raizes) {
 
 /** `null` quando o repositório está limpo -- só o sujo interessa aqui. */
 function statusRapido(projeto) {
-  return runPeriodicCommand('git', ['status', '--porcelain'], { cwd: projeto.caminho })
+  return runPeriodicCommand('git', ['status', '--porcelain'], { cwd: projeto.caminho, queue: 'gitScan' })
     .then((result) => {
       if (!result.ok) return null
       const linhas = result.stdout.split('\n').filter(Boolean)
