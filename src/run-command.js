@@ -39,6 +39,7 @@ export function runCommand(command, args, {
   env,
   timeoutMs = COMMAND_TIMEOUT_MS,
   maxBuffer = COMMAND_MAX_BUFFER,
+  input,
   onSpawn,
 } = {}) {
   return new Promise((resolve) => {
@@ -49,6 +50,7 @@ export function runCommand(command, args, {
     let overflowed = false
     let spawnError = null
     let settled = false
+    let killTimer = null
     const startedAt = Date.now()
     const append = (current, chunk) => {
       const remaining = maxBuffer - Buffer.byteLength(current)
@@ -80,22 +82,50 @@ export function runCommand(command, args, {
       })
     }
 
+    const killGroup = (signal) => {
+      if (!child?.pid) return
+      try {
+        // `detached` faz do filho líder de um grupo próprio; assim git/deus e
+        // seus netos não ficam vivos quando o processo direto sai primeiro.
+        process.kill(-child.pid, signal)
+      } catch {
+        try { child.kill(signal) } catch { /* o filho já saiu */ }
+      }
+    }
+    const terminate = (graceful) => {
+      if (graceful) {
+        killGroup('SIGTERM')
+        // Não cancelar ao receber `close`: o shell pode fechar antes de um
+        // neto teimoso. O segundo sinal ainda alcança o mesmo grupo.
+        killTimer = setTimeout(() => killGroup('SIGKILL'), 2_000)
+        killTimer.unref?.()
+      } else {
+        killGroup('SIGKILL')
+      }
+    }
     const timer = setTimeout(() => {
       timedOut = true
-      child?.kill('SIGKILL')
+      terminate(true)
     }, timeoutMs)
     timer.unref?.()
 
     try {
-      child = spawn(command, args, { cwd, env, shell: false, stdio: ['ignore', 'pipe', 'pipe'] })
+      child = spawn(command, args, {
+        cwd,
+        env,
+        shell: false,
+        detached: true,
+        stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+      })
+      if (input !== undefined) child.stdin.end(input)
       onSpawn?.(child)
       child.stdout.on('data', (chunk) => {
         stdout = append(stdout, chunk)
-        if (overflowed) child.kill('SIGKILL')
+        if (overflowed) terminate(false)
       })
       child.stderr.on('data', (chunk) => {
         stderr = append(stderr, chunk)
-        if (overflowed) child.kill('SIGKILL')
+        if (overflowed) terminate(false)
       })
       child.once('error', (error) => {
         spawnError = error
