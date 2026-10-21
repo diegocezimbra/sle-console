@@ -71,7 +71,11 @@ export async function salvarCredencial({ dirAge, destinatario, nome, valor, ageB
 
   // `age` recebe o segredo no stdin do executor, nunca em argv. O executor
   // impõe prazo/tamanho e mata o grupo se o binário travar.
-  const r = await runCommand(ageBin, ['-r', destinatario], { input: valor, maxBuffer: 4 * LIMITE_VALOR })
+  const r = await runCommand(ageBin, ['-r', destinatario], {
+    input: valor,
+    maxBuffer: 4 * LIMITE_VALOR,
+    binaryOutput: true,
+  })
   if (!r.ok || !r.stdout?.length) return { ok: false, codigo: 500, erro: 'falha ao criptografar' }
 
   mkdirSync(dirAge, { recursive: true, mode: 0o700 })

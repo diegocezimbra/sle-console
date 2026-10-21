@@ -46,11 +46,12 @@ export function runCommand(command, args, {
   timeoutMs = COMMAND_TIMEOUT_MS,
   maxBuffer = COMMAND_MAX_BUFFER,
   input,
+  binaryOutput = false,
   onSpawn,
 } = {}) {
   return new Promise((resolve) => {
     let child
-    let stdout = ''
+    let stdout = binaryOutput ? Buffer.alloc(0) : ''
     let stderr = ''
     let timedOut = false
     let overflowed = false
@@ -70,6 +71,18 @@ export function runCommand(command, args, {
         return current + Buffer.from(text).subarray(0, remaining).toString()
       }
       return current + text
+    }
+    const appendBuffer = (current, chunk) => {
+      const remaining = maxBuffer - current.length
+      if (remaining <= 0) {
+        overflowed = true
+        return current
+      }
+      if (chunk.length > remaining) {
+        overflowed = true
+        return Buffer.concat([current, chunk.subarray(0, remaining)])
+      }
+      return Buffer.concat([current, chunk])
     }
     const finish = (code, signal) => {
       if (settled) return
@@ -126,7 +139,7 @@ export function runCommand(command, args, {
       if (input !== undefined) child.stdin.end(input)
       onSpawn?.(child)
       child.stdout.on('data', (chunk) => {
-        stdout = append(stdout, chunk)
+        stdout = binaryOutput ? appendBuffer(stdout, chunk) : append(stdout, chunk)
         if (overflowed) terminate(false)
       })
       child.stderr.on('data', (chunk) => {
